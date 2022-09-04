@@ -60,6 +60,7 @@ mod tests {
     use super::*;
     mod parse {
         use super::*;
+        use rstest::rstest;
 
         const FILENAME: &str = "test.yaml";
         fn parse_error(violations: Vec<Violation>) -> Result<Vec<TestCase>, Error> {
@@ -110,34 +111,31 @@ tests:
             )
         }
 
-        #[test]
-        fn when_no_tests_returns_error() {
+        #[rstest]
+        #[case("when root is not map", "tests", vec![("$", "should be map, but is string")])]
+        #[case("when root dosen't have .tests", "{}", vec![("$", "should have .tests as seq")])]
+        #[case("when root.tests is not seq", "tests: {}", vec![("$.tests", "should be seq, but is map")])]
+        #[case("when test is not map", "tests: [42]", vec![("$.tests[0]", "should be map, but is int")])]
+        #[case("when test dosen't have .command", "tests: [{}]", vec![("$.tests[0]", "should have .command as seq")])]
+        #[case("when test command is not seq", "tests: [{command: 42}]", vec![("$.tests[0].command", "should be seq, but is int")])]
+        #[case("when test command contains not string", "tests: [{command: [42]}]", vec![("$.tests[0].command[0]", "should be string, but is int")])]
+        fn error_case(
+            #[case] title: &str,
+            #[case] input: &str,
+            #[case] violations: Vec<(&str, &str)>,
+        ) {
             let filename = FILENAME.to_string();
-            let input = "{}".as_bytes();
-
-            let actual: Result<Vec<TestCase>, Error> = parse(filename, input);
+            let actual: Result<Vec<TestCase>, Error> = parse(filename, input.as_bytes());
             assert_eq!(
                 actual,
-                parse_error(vec![violation("$", "should have .tests as seq")])
-            )
-        }
-
-        #[test]
-        fn when_test_is_not_map_returns_error() {
-            let filename = FILENAME.to_string();
-            let input = "\
-tests:
-  - 'command'
-"
-            .as_bytes();
-
-            let actual: Result<Vec<TestCase>, Error> = parse(filename, input);
-            assert_eq!(
-                actual,
-                parse_error(vec![violation(
-                    "$.tests[0]",
-                    "should be map, but is string"
-                )])
+                parse_error(
+                    violations
+                        .iter()
+                        .map(|(path, message)| violation(path, message))
+                        .collect()
+                ),
+                "{}",
+                title
             )
         }
     }
