@@ -1,16 +1,7 @@
-use std::fs::File;
-
-use serde_yaml::Value;
-
 use crate::{
     test_case::TestCase,
     validator::{Validator, Violation},
 };
-
-pub enum Input {
-    File(String),
-    Stdin,
-}
 
 #[derive(Debug)]
 pub struct Error {
@@ -34,27 +25,9 @@ impl Error {
     }
 }
 
-const STDIN_FILENAME: &str = "<stdin>";
-
-pub fn parse(input: Input) -> Result<Vec<TestCase>, Error> {
-    let (ast, filename): (Value, String) = match input {
-        Input::File(filename) => {
-            let file = File::open(&filename).map_err(|err| {
-                Error::without_violations(format!("cannot open {}: {}", filename, err))
-            })?;
-            serde_yaml::from_reader(file)
-                .map_err(|err| {
-                    Error::without_violations(format!("cannot parse {}: {}", filename, err))
-                })
-                .map(|ast| (ast, filename))
-        }
-        Input::Stdin => {
-            let stdin = std::io::stdin();
-            serde_yaml::from_reader(stdin)
-                .map_err(|err| Error::without_violations(format!("cannot parse stdin: {}", err)))
-                .map(|ast| (ast, STDIN_FILENAME.to_string()))
-        }
-    }?;
+pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCase>, Error> {
+    let ast = serde_yaml::from_reader(reader)
+        .map_err(|err| Error::without_violations(format!("cannot parse {}: {}", filename, err)))?;
 
     let mut v = Validator::new(filename);
 
@@ -66,7 +39,11 @@ pub fn parse(input: Input) -> Result<Vec<TestCase>, Error> {
                     v.must_be_map(test).and_then(|test| {
                         v.must_have_seq(test, "command", |v, command| {
                             v.map_seq(command, |v, arg| v.must_be_string(arg))
-                                .map(|command| TestCase { command })
+                                .map(|command| TestCase {
+                                    filename: v.filename.clone(),
+                                    path: v.current_path(),
+                                    command,
+                                })
                         })
                         .flatten()
                     })
@@ -76,4 +53,10 @@ pub fn parse(input: Input) -> Result<Vec<TestCase>, Error> {
         .flatten();
 
     test_cases.ok_or_else(|| Error::with_violations("parse error".to_string(), v.violations))
+}
+
+#[cfg(test)]
+mod tests {
+
+    mod parse {}
 }

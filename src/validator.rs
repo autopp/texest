@@ -41,10 +41,14 @@ impl Validator {
         }
     }
 
+    pub fn current_path(&self) -> String {
+        self.paths.join("")
+    }
+
     pub fn add_violation<S: AsRef<str>>(&mut self, message: S) {
         self.violations.push(Violation {
             filename: self.filename.clone(),
-            path: self.paths.join(""),
+            path: self.current_path(),
             message: message.as_ref().to_string(),
         });
     }
@@ -281,6 +285,27 @@ mod tests {
                     message: "error".to_string(),
                 }]
             );
+        }
+    }
+
+    mod current_path {
+        use super::*;
+
+        #[test]
+        fn when_no_path_returns_root_path() {
+            let v = Validator::new(FILENAME.to_string());
+            assert_eq!(v.current_path(), "$".to_string());
+        }
+
+        #[test]
+        fn when_path_pushed_returns_appended_path() {
+            let mut v = Validator::new(FILENAME.to_string());
+
+            v.in_path(".x", |v| {
+                v.in_path(".y", |v| {
+                    assert_eq!(v.current_path(), "$.x.y".to_string());
+                })
+            });
         }
     }
 

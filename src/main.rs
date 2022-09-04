@@ -3,7 +3,7 @@ mod parser;
 mod test_case;
 mod validator;
 
-use std::process::Command;
+use std::{fs::File, process::Command};
 
 use clap::Parser;
 
@@ -16,13 +16,17 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    args.files.iter().for_each(|file| {
-        let input = if file == "-" {
-            parser::Input::Stdin
+    args.files.iter().for_each(|filename| {
+        let test_cases = if filename == "-" {
+            parse("<stdin>".to_string(), std::io::stdin())
         } else {
-            parser::Input::File(file.clone())
-        };
-        let test_cases = parse(input).unwrap_or_else(|err| {
+            let file = File::open(filename).unwrap_or_else(|err| {
+                eprintln!("cannot open {}: {}", filename, err);
+                std::process::exit(2)
+            });
+            parse(filename.clone(), file)
+        }
+        .unwrap_or_else(|err| {
             eprintln!("cannot parse {:?}", err);
             std::process::exit(1);
         });
