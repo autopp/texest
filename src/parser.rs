@@ -38,7 +38,12 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                 v.map_seq(tests, |v, test| {
                     v.must_be_map(test).and_then(|test| {
                         v.must_have_seq(test, "command", |v, command| {
-                            v.map_seq(command, |v, arg| v.must_be_string(arg))
+                            if command.is_empty() {
+                                v.add_violation("should not be empty");
+                                None
+                            } else {
+                                v.map_seq(command, |v, arg| v.must_be_string(arg))
+                            }
                         })
                         .flatten()
                         .map(|command| TestCase {
@@ -119,6 +124,7 @@ tests:
         #[case("when test dosen't have .command", "tests: [{}]", vec![("$.tests[0]", "should have .command as seq")])]
         #[case("when test command is not seq", "tests: [{command: 42}]", vec![("$.tests[0].command", "should be seq, but is int")])]
         #[case("when test command contains not string", "tests: [{command: [42]}]", vec![("$.tests[0].command[0]", "should be string, but is int")])]
+        #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
         fn error_case(
             #[case] title: &str,
             #[case] input: &str,
