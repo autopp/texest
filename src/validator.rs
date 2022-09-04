@@ -88,6 +88,14 @@ impl Validator {
         s
     }
 
+    pub fn must_be_string(&mut self, x: &Value) -> Option<String> {
+        let s = x.as_str();
+        if s.is_none() {
+            self.add_violation(format!("should be string, but is {}", x.type_name()));
+        }
+        s.map(String::from)
+    }
+
     pub fn may_have_seq<'a, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &Sequence)>(
         &mut self,
         m: &'a Mapping,
@@ -116,6 +124,19 @@ impl Validator {
             return None;
         }
         self.may_have_seq(m, field, f)
+    }
+
+    pub fn map_seq<T>(
+        &mut self,
+        seq: &Sequence,
+        mut f: impl FnMut(&mut Validator, &Value) -> Option<T>,
+    ) -> Option<Vec<T>> {
+        seq.iter()
+            .enumerate()
+            .map(|(i, x)| self.in_index(i, |v| f(v, x)))
+            .collect::<Vec<Option<T>>>()
+            .into_iter()
+            .collect()
     }
 }
 
@@ -315,6 +336,35 @@ mod tests {
         }
     }
 
+    mod must_be_string {
+        use super::*;
+
+        #[test]
+        fn returns_the_string_when_value_is_string() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::String("hello".to_string());
+
+            assert_eq!(v.must_be_string(&value), Some("hello".to_string()));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_when_value_is_not_string() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::Bool(true);
+
+            assert_eq!(v.must_be_string(&value), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be string, but is bool".to_string(),
+                }]
+            )
+        }
+    }
+
     mod may_have_seq {
         use super::*;
 
@@ -452,6 +502,58 @@ mod tests {
                     path: "$.field".to_string(),
                     message: "should be seq, but is string".to_string(),
                 }]
+            )
+        }
+    }
+
+    mod map_seq {
+        use super::*;
+
+        #[test]
+        fn when_all_succeeded_returns_result_vec() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let s: Sequence = vec![
+                Value::String("a".to_string()),
+                Value::String("b".to_string()),
+                Value::String("c".to_string()),
+            ];
+
+            let actual = v.map_seq(&s, |v, x| v.must_be_string(x).map(|s| s.to_uppercase()));
+
+            assert_eq!(
+                actual,
+                Some(vec!["A".to_string(), "B".to_string(), "C".to_string()])
+            );
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_some_failed_returns_none() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let s: Sequence = vec![
+                Value::String("a".to_string()),
+                Value::Bool(true),
+                Value::String("b".to_string()),
+                Value::Number(1.into()),
+            ];
+
+            let actual = v.map_seq(&s, |v, x| v.must_be_string(x).map(|s| s.to_uppercase()));
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![
+                    Violation {
+                        filename: FILENAME.to_string(),
+                        path: "$[1]".to_string(),
+                        message: "should be string, but is bool".to_string(),
+                    },
+                    Violation {
+                        filename: FILENAME.to_string(),
+                        path: "$[3]".to_string(),
+                        message: "should be string, but is int".to_string(),
+                    }
+                ]
             )
         }
     }
