@@ -104,6 +104,19 @@ impl Validator {
                 })
             })
     }
+
+    pub fn must_have_seq<'a, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &Sequence)>(
+        &mut self,
+        m: &'a Mapping,
+        field: S,
+        f: F,
+    ) -> Option<&'a Sequence> {
+        if !m.contains_key(&Value::String(field.as_ref().to_string())) {
+            self.add_violation(format!("should have .{} as seq", field.as_ref()));
+            return None;
+        }
+        self.may_have_seq(m, field, f)
+    }
 }
 
 #[cfg(test)]
@@ -354,6 +367,80 @@ mod tests {
             );
 
             let actual = v.may_have_seq(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be seq, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
+    mod must_have_seq {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_seq_calls_callback_and_return_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            let s = Sequence::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::Sequence(s.clone()),
+            );
+
+            let actual = v.must_have_seq(&m, "field", |v, s_in_f| {
+                assert_eq!(&s, s_in_f);
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, Some(&s));
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "error".to_string(),
+                }]
+            )
+        }
+
+        #[test]
+        fn when_map_dosent_contain_seq_do_nothing() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.must_have_seq(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should have .field as seq".to_string(),
+                }]
+            )
+        }
+
+        #[test]
+        fn when_map_contains_not_seq_add_violation() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::String("answer".to_string()),
+            );
+
+            let actual = v.must_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
             });
 
