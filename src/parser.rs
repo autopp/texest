@@ -3,7 +3,7 @@ use crate::{
     validator::{Validator, Violation},
 };
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Error {
     pub message: String,
     pub violations: Vec<Violation>,
@@ -39,13 +39,13 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                     v.must_be_map(test).and_then(|test| {
                         v.must_have_seq(test, "command", |v, command| {
                             v.map_seq(command, |v, arg| v.must_be_string(arg))
-                                .map(|command| TestCase {
-                                    filename: v.filename.clone(),
-                                    path: v.current_path(),
-                                    command,
-                                })
                         })
                         .flatten()
+                        .map(|command| TestCase {
+                            filename: v.filename.clone(),
+                            path: v.current_path(),
+                            command,
+                        })
                     })
                 })
             })
@@ -57,6 +57,29 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    mod parse {
+        use super::*;
 
-    mod parse {}
+        #[test]
+        fn returns_test_cases() {
+            let filename = "test.yaml".to_string();
+            let input = "\
+tests:
+  - command:
+    - echo
+    - hello"
+                .as_bytes();
+
+            let actual: Result<Vec<TestCase>, Error> = parse(filename.clone(), input);
+            assert_eq!(
+                actual,
+                Ok(vec![TestCase {
+                    filename: filename.clone(),
+                    path: "$.tests[0]".to_string(),
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                }])
+            );
+        }
+    }
 }
