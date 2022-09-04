@@ -49,18 +49,27 @@ impl Validator {
         });
     }
 
-    pub fn in_path<S: AsRef<str>, F: FnMut(&mut Validator)>(&mut self, path: S, mut f: F) {
+    pub fn in_path<T, S: AsRef<str>, F: FnMut(&mut Validator) -> T>(
+        &mut self,
+        path: S,
+        mut f: F,
+    ) -> T {
         self.paths.push(path.as_ref().to_string());
-        f(self);
+        let ret = f(self);
         self.paths.pop();
+        ret
     }
 
-    pub fn in_index<F: FnMut(&mut Validator)>(&mut self, index: usize, f: F) {
+    pub fn in_index<T, F: FnMut(&mut Validator) -> T>(&mut self, index: usize, f: F) -> T {
         self.in_path(format!("[{}]", index), f)
     }
 
-    pub fn in_field<S: AsRef<str>, F: FnMut(&mut Validator)>(&mut self, field: S, f: F) {
-        self.in_path(format!(".{}", field.as_ref()), f);
+    pub fn in_field<T, S: AsRef<str>, F: FnMut(&mut Validator) -> T>(
+        &mut self,
+        field: S,
+        f: F,
+    ) -> T {
+        self.in_path(format!(".{}", field.as_ref()), f)
     }
 
     pub fn must_be_map<'a>(&'a mut self, x: &'a Value) -> Option<&Mapping> {
@@ -71,12 +80,29 @@ impl Validator {
         m
     }
 
-    pub fn must_be_seq<'a>(&'a mut self, x: &'a Value) -> Option<&Sequence> {
+    pub fn must_be_seq<'a>(&mut self, x: &'a Value) -> Option<&'a Sequence> {
         let s = x.as_sequence();
         if s.is_none() {
             self.add_violation(format!("should be seq, but is {}", x.type_name()));
         }
         s
+    }
+
+    pub fn may_have_seq<'a, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &Sequence)>(
+        &mut self,
+        m: &'a Mapping,
+        field: S,
+        mut f: F,
+    ) -> Option<&'a Sequence> {
+        m.get(&Value::String(field.as_ref().to_string()))
+            .and_then(|x| {
+                self.in_field(field, |v| v.must_be_seq(x)).map(|seq| {
+                    self.in_field(field, |v| {
+                        f(v, seq);
+                        seq
+                    })
+                })
+            })
     }
 }
 
@@ -135,13 +161,19 @@ mod tests {
         fn appneds_path_prefix_in_callback() {
             let mut v = Validator::new(FILENAME.to_string());
 
-            v.in_path(":prefix1", |v| {
+            let mut inner = "";
+            let outer = v.in_path(":prefix1", |v| {
                 v.add_violation("error1");
-                v.in_path(":prefix2", |v| {
+                inner = v.in_path(":prefix2", |v| {
                     v.add_violation("error2");
+                    "inner-result"
                 });
                 v.add_violation("error3");
+                "outer-result"
             });
+
+            assert_eq!(outer, "outer-result");
+            assert_eq!(inner, "inner-result");
 
             assert_eq!(
                 v.violations,
@@ -172,8 +204,12 @@ mod tests {
         #[test]
         fn be_equivalent_to_in_path_with_index() {
             let mut v = Validator::new(FILENAME.to_string());
-            v.in_index(1, |v| v.add_violation("error"));
+            let actual = v.in_index(1, |v| {
+                v.add_violation("error");
+                "result"
+            });
 
+            assert_eq!(actual, "result");
             assert_eq!(
                 v.violations,
                 vec![Violation {
@@ -191,8 +227,12 @@ mod tests {
         #[test]
         fn be_equivalent_to_in_path_with_field() {
             let mut v = Validator::new(FILENAME.to_string());
-            v.in_field("field", |v| v.add_violation("error"));
+            let actual = v.in_field("field", |v| {
+                v.add_violation("error");
+                "result"
+            });
 
+            assert_eq!(actual, "result");
             assert_eq!(
                 v.violations,
                 vec![Violation {
@@ -256,6 +296,73 @@ mod tests {
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
+                    message: "should be seq, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
+    mod may_have_seq {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_seq_calls_callback_and_return_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            let s = Sequence::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::Sequence(s.clone()),
+            );
+
+            let actual = v.may_have_seq(&m, "field", |v, s_in_f| {
+                assert_eq!(&s, s_in_f);
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, Some(&s));
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "error".to_string(),
+                }]
+            )
+        }
+
+        #[test]
+        fn when_map_dosent_contain_seq_do_nothing() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.may_have_seq(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_contains_not_seq_add_violation() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::String("answer".to_string()),
+            );
+
+            let actual = v.may_have_seq(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
                     message: "should be seq, but is string".to_string(),
                 }]
             )
