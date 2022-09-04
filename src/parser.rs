@@ -61,9 +61,25 @@ mod tests {
     mod parse {
         use super::*;
 
+        const FILENAME: &str = "test.yaml";
+        fn parse_error(violations: Vec<Violation>) -> Result<Vec<TestCase>, Error> {
+            Err(Error::with_violations(
+                "parse error".to_string(),
+                violations,
+            ))
+        }
+
+        fn violation(path: &str, message: &str) -> Violation {
+            Violation {
+                filename: FILENAME.to_string(),
+                path: path.to_string(),
+                message: message.to_string(),
+            }
+        }
+
         #[test]
         fn returns_test_cases() {
-            let filename = "test.yaml".to_string();
+            let filename = FILENAME.to_string();
             let input = "\
 tests:
   - command:
@@ -75,11 +91,54 @@ tests:
             assert_eq!(
                 actual,
                 Ok(vec![TestCase {
-                    filename: filename.clone(),
+                    filename,
                     path: "$.tests[0]".to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
                 }])
             );
+        }
+
+        #[test]
+        fn when_root_is_not_map_returns_error() {
+            let filename = FILENAME.to_string();
+            let input = "tests".as_bytes();
+
+            let actual: Result<Vec<TestCase>, Error> = parse(filename, input);
+            assert_eq!(
+                actual,
+                parse_error(vec![violation("$", "should be map, but is string")])
+            )
+        }
+
+        #[test]
+        fn when_no_tests_returns_error() {
+            let filename = FILENAME.to_string();
+            let input = "{}".as_bytes();
+
+            let actual: Result<Vec<TestCase>, Error> = parse(filename, input);
+            assert_eq!(
+                actual,
+                parse_error(vec![violation("$", "should have .tests as seq")])
+            )
+        }
+
+        #[test]
+        fn when_test_is_not_map_returns_error() {
+            let filename = FILENAME.to_string();
+            let input = "\
+tests:
+  - 'command'
+"
+            .as_bytes();
+
+            let actual: Result<Vec<TestCase>, Error> = parse(filename, input);
+            assert_eq!(
+                actual,
+                parse_error(vec![violation(
+                    "$.tests[0]",
+                    "should be map, but is string"
+                )])
+            )
         }
     }
 }
