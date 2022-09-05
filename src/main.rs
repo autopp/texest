@@ -4,7 +4,7 @@ mod parser;
 mod test_case;
 mod validator;
 
-use std::{fs::File, process::Command};
+use std::{fs::File, process::Command, time::Duration};
 
 use clap::Parser;
 use exec::execute_command;
@@ -17,6 +17,7 @@ struct Args {
 }
 
 fn main() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     let args = Args::parse();
     args.files.iter().for_each(|filename| {
         let test_cases = if filename == "-" {
@@ -39,7 +40,11 @@ fn main() {
                 .output()
                 .map_or(false, |output| output.status.success());
 
-            execute_command(test_case.command.clone(), "".to_string())
+            rt.block_on(execute_command(
+                test_case.command.clone(),
+                "".to_string(),
+                Duration::from_secs(5),
+            ))
         });
 
         if !results.all(|result| {

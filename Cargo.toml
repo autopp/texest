@@ -8,6 +8,8 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.1", features = ["derive"] }
 serde_yaml = "0.9.25"
+tokio = { version = "1.32.0", features = ["process", "time", "full"] }
 
 [dev-dependencies]
+async-std = { version = "1.12.0", features = ["attributes"] }
 rstest = "0.18.2"
