@@ -1,4 +1,5 @@
 mod error;
+mod exec;
 mod parser;
 mod test_case;
 mod validator;
@@ -6,6 +7,7 @@ mod validator;
 use std::{fs::File, process::Command};
 
 use clap::Parser;
+use exec::execute_command;
 
 use crate::parser::parse;
 
@@ -28,17 +30,23 @@ fn main() {
         }
         .unwrap_or_else(|err| {
             eprintln!("cannot parse {:?}", err);
-            std::process::exit(1);
+            std::process::exit(2);
         });
 
         let mut results = test_cases.iter().map(|test_case| {
             Command::new(test_case.command.get(0).unwrap())
                 .args(test_case.command.get(1..).unwrap())
                 .output()
-                .map_or(false, |output| output.status.success())
+                .map_or(false, |output| output.status.success());
+
+            execute_command(test_case.command.clone(), "".to_string())
         });
 
-        if !results.all(|result| result) {
+        if !results.all(|result| {
+            result
+                .map(|output| matches!(output.status, exec::Status::Exit(0)))
+                .unwrap_or(false)
+        }) {
             std::process::exit(1)
         }
     });
