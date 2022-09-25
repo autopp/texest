@@ -23,6 +23,9 @@ struct Args {
     files: Vec<String>,
 }
 
+const EXIT_CODE_TEST_FAILED: i32 = 1;
+const EXIT_CODE_INVALID_INPUT: i32 = 2;
+
 fn main() {
     let args = Args::parse();
 
@@ -37,7 +40,7 @@ fn main() {
 
     if !duplicated.is_empty() {
         eprintln!("duplicated input files: {}", duplicated.join(", "));
-        std::process::exit(2);
+        std::process::exit(EXIT_CODE_INVALID_INPUT);
     }
 
     let (oks, errs): (Vec<_>, Vec<_>) = args
@@ -49,7 +52,7 @@ fn main() {
             } else {
                 let file = File::open(filename).unwrap_or_else(|err| {
                     eprintln!("cannot open {}: {}", filename, err);
-                    std::process::exit(2)
+                    std::process::exit(EXIT_CODE_INVALID_INPUT)
                 });
                 parse(filename.clone(), file)
             }
@@ -67,7 +70,7 @@ fn main() {
                 );
             });
         });
-        std::process::exit(2);
+        std::process::exit(EXIT_CODE_INVALID_INPUT);
     }
 
     let status_mr = matcher::new_status_matcher_registry();
@@ -105,7 +108,7 @@ fn main() {
                 );
             });
         });
-        std::process::exit(2);
+        std::process::exit(EXIT_CODE_INVALID_INPUT);
     }
 
     let test_case_files = eval_results
@@ -126,6 +129,6 @@ fn main() {
     let results = run_tests(test_case_files);
 
     if !results.iter().all(TestResult::is_passed) {
-        std::process::exit(1)
+        std::process::exit(EXIT_CODE_TEST_FAILED)
     }
 }
