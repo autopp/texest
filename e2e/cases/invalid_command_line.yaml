@@ -1,0 +1,15 @@
+tests:
+  - name: 'duplicated argument'
+    command:
+      - type: env
+        name: TEXEST
+      - 'test1.yaml'
+      - 'test2.yaml'
+      - 'test1.yaml'
+      - 'test2.yaml'
+      - 'test3.yaml'
+    expect:
+      status:
+        eq: 2
+      stderr:
+        contain: 'duplicated input files: test1.yaml, test2.yaml'

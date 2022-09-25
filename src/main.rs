@@ -8,7 +8,7 @@ mod test_case;
 mod test_case_expr;
 mod validator;
 
-use std::fs::File;
+use std::{collections::HashSet, fs::File};
 
 use clap::Parser;
 
@@ -25,6 +25,20 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
+
+    // Check duplicated filenames
+    let mut unique_files = HashSet::<&String>::new();
+    let mut duplicated: Vec<String> = vec![];
+    args.files.iter().for_each(|filename| {
+        if !unique_files.insert(filename) {
+            duplicated.push(filename.clone());
+        }
+    });
+
+    if !duplicated.is_empty() {
+        eprintln!("duplicated input files: {}", duplicated.join(", "));
+        std::process::exit(2);
+    }
 
     let (oks, errs): (Vec<_>, Vec<_>) = args
         .files
