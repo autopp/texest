@@ -17,6 +17,11 @@ pub struct TestCase {
     pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
 }
 
+pub struct TestCaseFile<'a> {
+    pub filename: String,
+    pub test_cases: Vec<&'a TestCase>,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TestResult {
     Asserted { status: Vec<String> },

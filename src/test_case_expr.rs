@@ -25,6 +25,12 @@ pub struct TestCaseExpr {
     pub status_matchers: Mapping,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct TestCaseExprFile {
+    pub filename: String,
+    pub test_case_exprs: Vec<TestCaseExpr>,
+}
+
 pub fn eval(
     status_mr: &StatusMatcherRegistry,
     test_case_expr: &TestCaseExpr,

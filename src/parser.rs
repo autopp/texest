@@ -3,7 +3,7 @@ use std::time::Duration;
 use serde_yaml::Mapping;
 
 use crate::{
-    test_case_expr::TestCaseExpr,
+    test_case_expr::{TestCaseExpr, TestCaseExprFile},
     validator::{Validator, Violation},
 };
 
@@ -34,7 +34,7 @@ impl Error {
 
 const DEFAULT_TIMEOUT: u64 = 10;
 
-pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCaseExpr>, Error> {
+pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExprFile, Error> {
     let ast = serde_yaml::from_reader(reader).map_err(|err| {
         Error::without_violations(
             filename.clone(),
@@ -90,7 +90,10 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
     match test_case_exprs {
         Some(test_case_exprs) => {
             if v.violations.is_empty() {
-                Ok(test_case_exprs)
+                Ok(TestCaseExprFile {
+                    filename: filename.clone(),
+                    test_case_exprs,
+                })
             } else {
                 Err(Error::with_violations(
                     filename,
@@ -119,7 +122,7 @@ mod tests {
         use serde_yaml::Value;
 
         const FILENAME: &str = "test.yaml";
-        fn parse_error(violations: Vec<Violation>) -> Result<Vec<TestCaseExpr>, Error> {
+        fn parse_error(violations: Vec<Violation>) -> Result<TestCaseExprFile, Error> {
             Err(Error::with_violations(
                 FILENAME.to_string(),
                 "parse error".to_string(),
@@ -187,12 +190,14 @@ tests:
             #[case] expected: Vec<TestCaseExprTemplate>,
         ) {
             let filename = FILENAME.to_string();
-            let actual: Result<Vec<TestCaseExpr>, Error> =
-                parse(filename.clone(), input.as_bytes());
+            let actual = parse(filename.clone(), input.as_bytes());
 
             assert_eq!(
                 actual,
-                Ok(expected.into_iter().map(|x| x.build()).collect()),
+                Ok(TestCaseExprFile {
+                    filename: FILENAME.to_string(),
+                    test_case_exprs: expected.into_iter().map(|x| x.build()).collect()
+                }),
                 "{}",
                 title
             )
