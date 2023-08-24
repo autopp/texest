@@ -1,0 +1,58 @@
+name: release-pr
+
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-and-build:
+    uses: ./.github/workflows/test.yml
+    if: "startsWith(github.head_ref, 'release/') && !github.event.pull_request.head.fork"
+  prepare-release:
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Create Tag
+        run: |
+          VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')
+          TAG="v${VERSION}"
+          hub release --include-drafts -f "%t:%S%n"
+          if hub release --include-drafts -f "%t:%S%n" | grep -x -F "${TAG}:draft" >/dev/null; then
+            echo Delete existing release
+            gh release delete "${TAG}"
+          fi
+          gh release create "${TAG}" --title "${TAG}" --draft
+  upload-artifacts:
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    needs: prepare-release
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Attach Artifacts
+        run: |
+          VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')
+          TAG="v${VERSION}"
+          cargo build --release --target=${{ matrix.target }}
+          mv target/${{ matrix.target }}/release/texest texest-${{ matrix.target }}
+          gh release upload "${TAG}" texest-${{ matrix.target }} --clobber
