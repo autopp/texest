@@ -1,0 +1,24 @@
+tests:
+  - name: 'valid input'
+    command:
+      - type: env
+        name: TEXEST
+    stdin:
+      format: yaml
+      value:
+        answer: 42
+    expect:
+      status:
+        eq: 0
+      stderr:
+        beEmpty: true
+  - name: 'invalid input'
+    command:
+      - type: env
+        name: TEXEST
+    stdin: "ans  wer: '"
+    expect:
+      status:
+        eq: 1
+      stderr:
+        beEmpty: false

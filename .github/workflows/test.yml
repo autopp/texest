@@ -32,3 +32,7 @@ jobs:
           cargo fmt --check
           cargo clippy
       - run: cargo build --release
+      - run: |
+          gh release download --repo autopp/spexec --pattern spexec-linux-amd64.tar.gz -D /tmp
+          tar -x -C /tmp -f /tmp/spexec-linux-amd64.tar.gz
+          E2E_TESTER=/tmp/spexec-linux-amd64/spexec e2e/run.sh

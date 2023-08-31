@@ -1,3 +1,5 @@
+mod parser;
+
 use std::io;
 
 use serde_yaml::Value;
