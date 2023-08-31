@@ -56,3 +56,25 @@ jobs:
           cargo build --release --target=${{ matrix.target }}
           mv target/${{ matrix.target }}/release/texest texest-${{ matrix.target }}
           gh release upload "${TAG}" texest-${{ matrix.target }} --clobber
+      - name: Notify to Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,took,workflow,job,ref,message
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: failure() || cancelled()
+  teardown:
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    needs: upload-artifacts
+    steps:
+    - name: Notify to Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,took,workflow,job,ref,message
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: always()

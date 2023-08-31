@@ -2,6 +2,9 @@ name: test
 
 on:
   workflow_call:
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true
     outputs:
       version:
         value: ${{ jobs.test-and-build.outputs.version }}
@@ -38,3 +41,11 @@ jobs:
           gh release download --repo autopp/spexec --pattern spexec-linux-amd64.tar.gz -D /tmp
           tar -x -C /tmp -f /tmp/spexec-linux-amd64.tar.gz
           E2E_TESTER=/tmp/spexec-linux-amd64/spexec e2e/run.sh
+      - name: Notify to Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,took,workflow,job,ref,message
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: failure() || cancelled()
