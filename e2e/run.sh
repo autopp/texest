@@ -3,7 +3,7 @@
 set -eu
 
 my_dir=$(cd $(dirname $0); pwd)
-target_cmd=${E2E_TARGET:-${my_dir}/../target/release/texest}
+target_cmd=${E2E_TARGET:-${my_dir}/../target/debug/texest}
 tester_cmd="${E2E_TESTER:-spexec}"
 
 have_error=no

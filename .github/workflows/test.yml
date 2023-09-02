@@ -40,7 +40,7 @@ jobs:
       - run: |
           gh release download --repo autopp/spexec --pattern spexec-linux-amd64.tar.gz -D /tmp
           tar -x -C /tmp -f /tmp/spexec-linux-amd64.tar.gz
-          E2E_TESTER=/tmp/spexec-linux-amd64/spexec e2e/run.sh
+          E2E_TARGET=$(pwd)/target/release/texest E2E_TESTER=/tmp/spexec-linux-amd64/spexec e2e/run.sh
       - name: Notify to Slack
         uses: 8398a7/action-slack@v3
         with:

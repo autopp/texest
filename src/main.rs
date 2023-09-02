@@ -1,15 +1,26 @@
+mod error;
 mod parser;
 
-use std::io;
+use clap::Parser;
 
-use serde_yaml::Value;
+use crate::parser::parse;
+
+#[derive(Parser)]
+struct Args {
+    files: Vec<String>,
+}
 
 fn main() {
-    let stdin = io::stdin();
-    let input_file: Value = serde_yaml::from_reader(stdin).unwrap_or_else(|err| {
-        eprintln!("cannot parse input file: {}", err);
-        std::process::exit(1);
+    let args = Args::parse();
+    args.files.iter().for_each(|file| {
+        let input = if file == "-" {
+            parser::Input::Stdin
+        } else {
+            parser::Input::File(file.clone())
+        };
+        parse(input).unwrap_or_else(|err| {
+            eprintln!("cannot parse {:?}", err);
+            std::process::exit(1);
+        });
     });
-
-    println!("{:?}", input_file);
 }

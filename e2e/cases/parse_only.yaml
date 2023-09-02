@@ -3,6 +3,7 @@ tests:
     command:
       - type: env
         name: TEXEST
+      - "-"
     stdin:
       format: yaml
       value:
@@ -12,11 +13,25 @@ tests:
         eq: 0
       stderr:
         beEmpty: true
+  - name: 'valid input from file'
+    command:
+      - type: env
+        name: TEXEST
+      - type: file
+        format: yaml
+        value:
+          answer: 42
+    expect:
+      status:
+        eq: 0
+      stderr:
+        beEmpty: true
   - name: 'invalid input'
     command:
       - type: env
         name: TEXEST
-    stdin: "ans  wer: '"
+      - "-"
+    stdin: "ans wer: '"
     expect:
       status:
         eq: 1
