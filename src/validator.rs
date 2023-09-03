@@ -41,16 +41,16 @@ impl Validator {
         }
     }
 
-    pub fn add_violation(&mut self, message: String) {
+    pub fn add_violation<S: AsRef<str>>(&mut self, message: S) {
         self.violations.push(Violation {
             filename: self.filename.clone(),
             path: self.paths.join(""),
-            message,
+            message: message.as_ref().to_string(),
         });
     }
 
-    pub fn in_path<F: FnMut(&mut Validator)>(&mut self, path: String, mut f: F) {
-        self.paths.push(path);
+    pub fn in_path<S: AsRef<str>, F: FnMut(&mut Validator)>(&mut self, path: S, mut f: F) {
+        self.paths.push(path.as_ref().to_string());
         f(self);
         self.paths.pop();
     }
@@ -59,8 +59,8 @@ impl Validator {
         self.in_path(format!("[{}]", index), f)
     }
 
-    pub fn in_field<F: FnMut(&mut Validator)>(&mut self, field: &str, f: F) {
-        self.in_path(format!(".{}", field), f);
+    pub fn in_field<S: AsRef<str>, F: FnMut(&mut Validator)>(&mut self, field: S, f: F) {
+        self.in_path(format!(".{}", field.as_ref()), f);
     }
 
     pub fn must_be_map<'a>(&'a mut self, x: &'a Value) -> Option<&Mapping> {
@@ -98,22 +98,22 @@ mod tests {
         #[test]
         fn with_two_calls() {
             let mut v = Validator::new(FILENAME.to_string());
-            let message1 = "error1".to_string();
-            let message2 = "error2".to_string();
-            v.add_violation(message1.clone());
-            v.add_violation(message2.clone());
+            let message1 = "error1";
+            let message2 = "error2";
+            v.add_violation(message1);
+            v.add_violation(message2);
             assert_eq!(
                 v.violations,
                 vec![
                     Violation {
                         filename: FILENAME.to_string(),
                         path: "$".to_string(),
-                        message: message1,
+                        message: message1.to_string(),
                     },
                     Violation {
                         filename: FILENAME.to_string(),
                         path: "$".to_string(),
-                        message: message2,
+                        message: message2.to_string(),
                     }
                 ]
             );
@@ -127,12 +127,12 @@ mod tests {
         fn appneds_path_prefix_in_callback() {
             let mut v = Validator::new(FILENAME.to_string());
 
-            v.in_path(":prefix1".to_string(), |v| {
-                v.add_violation("error1".to_string());
-                v.in_path(":prefix2".to_string(), |v| {
-                    v.add_violation("error2".to_string());
+            v.in_path(":prefix1", |v| {
+                v.add_violation("error1");
+                v.in_path(":prefix2", |v| {
+                    v.add_violation("error2");
                 });
-                v.add_violation("error3".to_string());
+                v.add_violation("error3");
             });
 
             assert_eq!(
@@ -164,7 +164,7 @@ mod tests {
         #[test]
         fn be_equivalent_to_in_path_with_index() {
             let mut v = Validator::new(FILENAME.to_string());
-            v.in_index(1, |v| v.add_violation("error".to_string()));
+            v.in_index(1, |v| v.add_violation("error"));
 
             assert_eq!(
                 v.violations,
@@ -183,7 +183,7 @@ mod tests {
         #[test]
         fn be_equivalent_to_in_path_with_field() {
             let mut v = Validator::new(FILENAME.to_string());
-            v.in_field("field", |v| v.add_violation("error".to_string()));
+            v.in_field("field", |v| v.add_violation("error"));
 
             assert_eq!(
                 v.violations,
