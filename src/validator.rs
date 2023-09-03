@@ -34,6 +34,14 @@ impl Validator {
         f(self);
         self.paths.pop();
     }
+
+    pub fn in_index<F: FnMut(&mut Validator)>(&mut self, index: usize, f: F) {
+        self.in_path(format!("[{}]", index), f)
+    }
+
+    pub fn in_field<F: FnMut(&mut Validator)>(&mut self, field: &str, f: F) {
+        self.in_path(format!(".{}", field), f);
+    }
 }
 
 #[cfg(test)]
@@ -119,6 +127,44 @@ mod tests {
                     }
                 ]
             )
+        }
+    }
+
+    mod in_index {
+        use super::*;
+
+        #[test]
+        fn be_equivalent_to_in_path_with_index() {
+            let mut v = Validator::new(FILENAME.to_string());
+            v.in_index(1, |v| v.add_violation("error".to_string()));
+
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$[1]".to_string(),
+                    message: "error".to_string(),
+                }]
+            );
+        }
+    }
+
+    mod in_field {
+        use super::*;
+
+        #[test]
+        fn be_equivalent_to_in_path_with_field() {
+            let mut v = Validator::new(FILENAME.to_string());
+            v.in_field("field", |v| v.add_violation("error".to_string()));
+
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "error".to_string(),
+                }]
+            );
         }
     }
 }
