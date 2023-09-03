@@ -1,5 +1,7 @@
 mod error;
 mod parser;
+mod test_case;
+mod validator;
 
 use clap::Parser;
 
