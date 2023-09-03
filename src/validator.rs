@@ -1,3 +1,5 @@
+use serde_yaml::{Mapping, Value};
+
 #[derive(PartialEq, Debug, Clone)]
 pub struct Violation {
     filename: String,
@@ -41,6 +43,15 @@ impl Validator {
 
     pub fn in_field<F: FnMut(&mut Validator)>(&mut self, field: &str, f: F) {
         self.in_path(format!(".{}", field), f);
+    }
+
+    pub fn must_be_map<'a>(&'a mut self, x: &'a Value) -> Option<&Mapping> {
+        let m = x.as_mapping();
+        if m.is_none() {
+            // TODO
+            self.add_violation("should be map, but is string".to_string());
+        }
+        m
     }
 }
 
@@ -165,6 +176,35 @@ mod tests {
                     message: "error".to_string(),
                 }]
             );
+        }
+    }
+
+    mod must_be_map {
+        use super::*;
+
+        #[test]
+        fn returns_some_if_value_is_map() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            assert_eq!(v.must_be_map(&Value::Mapping(m.clone())), Some(&m));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_if_value_is_not_map() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::String("string".to_string());
+
+            assert_eq!(v.must_be_map(&value), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be map, but is string".to_string(),
+                }]
+            )
         }
     }
 }
