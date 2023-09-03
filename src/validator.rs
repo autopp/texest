@@ -7,6 +7,24 @@ pub struct Violation {
     message: String,
 }
 
+trait Ast {
+    fn type_name(&self) -> String;
+}
+
+impl Ast for Value {
+    fn type_name(&self) -> String {
+        match self {
+            Value::Null => "nil".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Number(n) => if n.is_i64() { "int" } else { "float" }.to_string(),
+            Value::String(_) => "string".to_string(),
+            Value::Sequence(_) => "seq".to_string(),
+            Value::Mapping(_) => "map".to_string(),
+            Value::Tagged(t) => t.value.type_name(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Validator {
     filename: String,
@@ -48,8 +66,7 @@ impl Validator {
     pub fn must_be_map<'a>(&'a mut self, x: &'a Value) -> Option<&Mapping> {
         let m = x.as_mapping();
         if m.is_none() {
-            // TODO
-            self.add_violation("should be map, but is string".to_string());
+            self.add_violation(format!("should be map, but is {}", x.type_name()));
         }
         m
     }
