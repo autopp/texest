@@ -2,9 +2,9 @@ use serde_yaml::{Mapping, Sequence, Value};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Violation {
-    filename: String,
-    path: String,
-    message: String,
+    pub filename: String,
+    pub path: String,
+    pub message: String,
 }
 
 trait Ast {
@@ -27,9 +27,9 @@ impl Ast for Value {
 
 #[derive(Clone)]
 pub struct Validator {
-    filename: String,
-    paths: Vec<String>,
-    violations: Vec<Violation>,
+    pub filename: String,
+    pub paths: Vec<String>,
+    pub violations: Vec<Violation>,
 }
 
 impl Validator {
@@ -72,7 +72,7 @@ impl Validator {
         self.in_path(format!(".{}", field.as_ref()), f)
     }
 
-    pub fn must_be_map<'a>(&'a mut self, x: &'a Value) -> Option<&Mapping> {
+    pub fn must_be_map<'a>(&mut self, x: &'a Value) -> Option<&'a Mapping> {
         let m = x.as_mapping();
         if m.is_none() {
             self.add_violation(format!("should be map, but is {}", x.type_name()));
@@ -96,29 +96,35 @@ impl Validator {
         s.map(String::from)
     }
 
-    pub fn may_have_seq<'a, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &Sequence)>(
+    pub fn may_have_seq<
+        'a,
+        T,
+        S: AsRef<str> + Copy,
+        F: FnMut(&mut Validator, &'a Sequence) -> T,
+    >(
         &mut self,
         m: &'a Mapping,
         field: S,
         mut f: F,
-    ) -> Option<&'a Sequence> {
+    ) -> Option<T> {
         m.get(&Value::String(field.as_ref().to_string()))
             .and_then(|x| {
-                self.in_field(field, |v| v.must_be_seq(x)).map(|seq| {
-                    self.in_field(field, |v| {
-                        f(v, seq);
-                        seq
-                    })
-                })
+                self.in_field(field, |v| v.must_be_seq(x))
+                    .map(|seq| self.in_field(field, |v| f(v, seq)))
             })
     }
 
-    pub fn must_have_seq<'a, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &Sequence)>(
+    pub fn must_have_seq<
+        'a,
+        T,
+        S: AsRef<str> + Copy,
+        F: FnMut(&mut Validator, &'a Sequence) -> T,
+    >(
         &mut self,
         m: &'a Mapping,
         field: S,
         f: F,
-    ) -> Option<&'a Sequence> {
+    ) -> Option<T> {
         if !m.contains_key(&Value::String(field.as_ref().to_string())) {
             self.add_violation(format!("should have .{} as seq", field.as_ref()));
             return None;
@@ -381,9 +387,10 @@ mod tests {
             let actual = v.may_have_seq(&m, "field", |v, s_in_f| {
                 assert_eq!(&s, s_in_f);
                 v.add_violation("error");
+                42
             });
 
-            assert_eq!(actual, Some(&s));
+            assert_eq!(actual, Some(42));
             assert_eq!(
                 v.violations,
                 vec![Violation {
@@ -448,9 +455,10 @@ mod tests {
             let actual = v.must_have_seq(&m, "field", |v, s_in_f| {
                 assert_eq!(&s, s_in_f);
                 v.add_violation("error");
+                42
             });
 
-            assert_eq!(actual, Some(&s));
+            assert_eq!(actual, Some(42));
             assert_eq!(
                 v.violations,
                 vec![Violation {
