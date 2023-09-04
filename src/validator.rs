@@ -1,4 +1,4 @@
-use serde_yaml::{Mapping, Value};
+use serde_yaml::{Mapping, Sequence, Value};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Violation {
@@ -69,6 +69,14 @@ impl Validator {
             self.add_violation(format!("should be map, but is {}", x.type_name()));
         }
         m
+    }
+
+    pub fn must_be_seq<'a>(&'a mut self, x: &'a Value) -> Option<&Sequence> {
+        let s = x.as_sequence();
+        if s.is_none() {
+            self.add_violation(format!("should be seq, but is {}", x.type_name()));
+        }
+        s
     }
 }
 
@@ -220,6 +228,35 @@ mod tests {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be map, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
+    mod must_be_seq {
+        use super::*;
+
+        #[test]
+        fn returns_some_if_value_is_seq() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let s = Sequence::new();
+
+            assert_eq!(v.must_be_seq(&Value::Sequence(s.clone())), Some(&s));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_if_value_is_not_seq() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::String("string".to_string());
+
+            assert_eq!(v.must_be_seq(&value), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be seq, but is string".to_string(),
                 }]
             )
         }
