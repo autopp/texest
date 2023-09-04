@@ -1,6 +1,6 @@
-use std::{cell::RefCell, fs::File};
+use std::fs::File;
 
-use serde_yaml::{Mapping, Sequence, Value};
+use serde_yaml::Value;
 
 use crate::{test_case::TestCase, validator::Validator};
 
@@ -33,17 +33,22 @@ pub fn parse(input: Input) -> Result<Vec<TestCase>, Error> {
 
     let mut v = Validator::new(filename);
 
-    let test_cases = v.must_be_map(&ast).and_then(|root| {
-        v.must_have_seq(root, "tests", |_, tests| tests)
-            .and_then(|tests| {
+    let test_cases = v
+        .must_be_map(&ast)
+        .and_then(|root| {
+            v.must_have_seq(root, "tests", |v, tests| {
                 v.map_seq(tests, |v, test| {
-                    v.must_be_map(test)
-                        .and_then(|test| v.must_have_seq(test, "command", |_, it| it))
-                        .and_then(|command| v.map_seq(command, |v, arg| v.must_be_string(arg)))
-                        .map(|command| TestCase { command })
+                    v.must_be_map(test).and_then(|test| {
+                        v.must_have_seq(test, "command", |v, command| {
+                            v.map_seq(command, |v, arg| v.must_be_string(arg))
+                                .map(|command| TestCase { command })
+                        })
+                        .flatten()
+                    })
                 })
             })
-    });
+        })
+        .flatten();
 
     test_cases.ok_or_else(|| {
         Error(
