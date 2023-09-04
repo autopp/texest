@@ -2,7 +2,10 @@ use std::fs::File;
 
 use serde_yaml::Value;
 
-use crate::{test_case::TestCase, validator::Validator};
+use crate::{
+    test_case::TestCase,
+    validator::{Validator, Violation},
+};
 
 pub enum Input {
     File(String),
@@ -10,23 +13,45 @@ pub enum Input {
 }
 
 #[derive(Debug)]
-pub struct Error(String);
+pub struct Error {
+    pub message: String,
+    pub violations: Vec<Violation>,
+}
+
+impl Error {
+    fn without_violations(message: String) -> Self {
+        Self {
+            message,
+            violations: vec![],
+        }
+    }
+
+    fn with_violations(message: String, violations: Vec<Violation>) -> Self {
+        Self {
+            message,
+            violations,
+        }
+    }
+}
 
 const STDIN_FILENAME: &str = "<stdin>";
 
 pub fn parse(input: Input) -> Result<Vec<TestCase>, Error> {
     let (ast, filename): (Value, String) = match input {
         Input::File(filename) => {
-            let file = File::open(&filename)
-                .map_err(|err| Error(format!("cannot open {}: {}", filename, err)))?;
+            let file = File::open(&filename).map_err(|err| {
+                Error::without_violations(format!("cannot open {}: {}", filename, err))
+            })?;
             serde_yaml::from_reader(file)
-                .map_err(|err| Error(format!("cannot parse {}: {}", filename, err)))
+                .map_err(|err| {
+                    Error::without_violations(format!("cannot parse {}: {}", filename, err))
+                })
                 .map(|ast| (ast, filename))
         }
         Input::Stdin => {
             let stdin = std::io::stdin();
             serde_yaml::from_reader(stdin)
-                .map_err(|err| Error(format!("cannot parse stdin: {}", err)))
+                .map_err(|err| Error::without_violations(format!("cannot parse stdin: {}", err)))
                 .map(|ast| (ast, STDIN_FILENAME.to_string()))
         }
     }?;
@@ -50,18 +75,5 @@ pub fn parse(input: Input) -> Result<Vec<TestCase>, Error> {
         })
         .flatten();
 
-    test_cases.ok_or_else(|| {
-        Error(
-            v.violations
-                .iter()
-                .map(|violation| {
-                    format!(
-                        "{} {}: {}",
-                        violation.filename, violation.path, violation.message
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join("\n"),
-        )
-    })
+    test_cases.ok_or_else(|| Error::with_violations("parse error".to_string(), v.violations))
 }

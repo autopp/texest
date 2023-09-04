@@ -25,7 +25,7 @@ impl Ast for Value {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Validator {
     pub filename: String,
     pub paths: Vec<String>,
