@@ -1,0 +1,19 @@
+tests:
+  - name: 'with timeouted command'
+    command:
+      - type: env
+        name: TEXEST
+      - "-"
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - 'sleep'
+              - '1'
+            timeout: 0
+    teeStdout: true
+    teeStderr: true
+    expect:
+      status:
+        eq: 1

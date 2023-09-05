@@ -4,7 +4,7 @@ mod parser;
 mod test_case;
 mod validator;
 
-use std::{fs::File, process::Command, time::Duration};
+use std::{fs::File, process::Command};
 
 use clap::Parser;
 use exec::execute_command;
@@ -43,7 +43,7 @@ fn main() {
             rt.block_on(execute_command(
                 test_case.command.clone(),
                 "".to_string(),
-                Duration::from_secs(5),
+                test_case.timeout,
             ))
         });
 

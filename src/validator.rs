@@ -16,7 +16,14 @@ impl Ast for Value {
         match self {
             Value::Null => "nil".to_string(),
             Value::Bool(_) => "bool".to_string(),
-            Value::Number(n) => if n.is_i64() { "int" } else { "float" }.to_string(),
+            Value::Number(n) => if n.is_u64() {
+                "uint"
+            } else if n.is_i64() {
+                "int"
+            } else {
+                "float"
+            }
+            .to_string(),
             Value::String(_) => "string".to_string(),
             Value::Sequence(_) => "seq".to_string(),
             Value::Mapping(_) => "map".to_string(),
@@ -92,6 +99,14 @@ impl Validator {
         s
     }
 
+    pub fn must_be_uint(&mut self, x: &Value) -> Option<u64> {
+        let n = x.as_u64();
+        if n.is_none() {
+            self.add_violation(format!("should be uint, but is {}", x.type_name()));
+        }
+        n
+    }
+
     pub fn must_be_string(&mut self, x: &Value) -> Option<String> {
         let s = x.as_str();
         if s.is_none() {
@@ -134,6 +149,11 @@ impl Validator {
             return None;
         }
         self.may_have_seq(m, field, f)
+    }
+
+    pub fn may_have_uint<S: AsRef<str> + Copy>(&mut self, m: &Mapping, field: S) -> Option<u64> {
+        m.get(&Value::String(field.as_ref().to_string()))
+            .and_then(|x| self.in_field(field, |v| v.must_be_uint(x)))
     }
 
     pub fn map_seq<T>(
@@ -367,6 +387,35 @@ mod tests {
         }
     }
 
+    mod must_be_uint {
+        use super::*;
+
+        #[test]
+        fn returns_the_uint_when_value_is_uint() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::Number(42.into());
+
+            assert_eq!(v.must_be_uint(&value), Some(42));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_when_value_is_not_uint() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::Number((-42).into());
+
+            assert_eq!(v.must_be_uint(&value), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be uint, but is int".to_string(),
+                }]
+            )
+        }
+    }
+
     mod must_be_string {
         use super::*;
 
@@ -539,6 +588,55 @@ mod tests {
         }
     }
 
+    mod may_have_uint {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_int_returns_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::String("field".to_string()), Value::Number(42.into()));
+
+            let actual = v.may_have_uint(&m, "field");
+
+            assert_eq!(actual, Some(42));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_dosent_contain_int_returns_none() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.may_have_uint(&m, "field");
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_contains_not_int_add_violation() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::String("answer".to_string()),
+            );
+
+            let actual = v.may_have_uint(&m, "field");
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be uint, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
     mod map_seq {
         use super::*;
 
@@ -584,7 +682,7 @@ mod tests {
                     Violation {
                         filename: FILENAME.to_string(),
                         path: "$[3]".to_string(),
-                        message: "should be string, but is int".to_string(),
+                        message: "should be string, but is uint".to_string(),
                     }
                 ]
             )
