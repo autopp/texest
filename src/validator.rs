@@ -99,6 +99,14 @@ impl Validator {
         s
     }
 
+    pub fn must_be_bool(&mut self, x: &Value) -> Option<bool> {
+        let b = x.as_bool();
+        if b.is_none() {
+            self.add_violation(format!("should be bool, but is {}", x.type_name()));
+        }
+        b
+    }
+
     pub fn must_be_uint(&mut self, x: &Value) -> Option<u64> {
         let n = x.as_u64();
         if n.is_none() {
@@ -149,6 +157,11 @@ impl Validator {
             return None;
         }
         self.may_have_seq(m, field, f)
+    }
+
+    pub fn may_have_bool<S: AsRef<str> + Copy>(&mut self, m: &Mapping, field: S) -> Option<bool> {
+        m.get(&Value::String(field.as_ref().to_string()))
+            .and_then(|x| self.in_field(field, |v| v.must_be_bool(x)))
     }
 
     pub fn may_have_uint<S: AsRef<str> + Copy>(&mut self, m: &Mapping, field: S) -> Option<u64> {
@@ -387,6 +400,35 @@ mod tests {
         }
     }
 
+    mod must_be_bool {
+        use super::*;
+
+        #[test]
+        fn returns_the_bool_when_value_is_bool() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::Bool(true);
+
+            assert_eq!(v.must_be_bool(&value), Some(true));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_when_value_is_not_bool() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::String("string".to_string());
+
+            assert_eq!(v.must_be_bool(&value), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be bool, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
     mod must_be_uint {
         use super::*;
 
@@ -583,6 +625,55 @@ mod tests {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be seq, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
+    mod may_have_bool {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_bool_returns_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::String("field".to_string()), Value::Bool(true));
+
+            let actual = v.may_have_bool(&m, "field");
+
+            assert_eq!(actual, Some(true));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_dosent_contain_bool_returns_none() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.may_have_bool(&m, "field");
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_contains_not_bool_add_violation() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::String("answer".to_string()),
+            );
+
+            let actual = v.may_have_bool(&m, "field");
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be bool, but is string".to_string(),
                 }]
             )
         }

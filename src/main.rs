@@ -45,6 +45,15 @@ fn main() {
                 "".to_string(),
                 test_case.timeout,
             ))
+            .map(|output| {
+                if test_case.tee_stdout {
+                    println!("{}", output.stdout);
+                }
+                if test_case.tee_stderr {
+                    println!("{}", output.stderr);
+                }
+                output
+            })
         });
 
         if !results.all(|result| {

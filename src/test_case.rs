@@ -6,4 +6,6 @@ pub struct TestCase {
     pub path: String,
     pub command: Vec<String>,
     pub timeout: Duration,
+    pub tee_stdout: bool,
+    pub tee_stderr: bool,
 }
