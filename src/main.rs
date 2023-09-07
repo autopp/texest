@@ -42,7 +42,7 @@ fn main() {
 
             rt.block_on(execute_command(
                 test_case.command.clone(),
-                "".to_string(),
+                test_case.stdin.clone(),
                 test_case.timeout,
             ))
             .map(|output| {

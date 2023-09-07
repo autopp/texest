@@ -169,6 +169,15 @@ impl Validator {
             .and_then(|x| self.in_field(field, |v| v.must_be_uint(x)))
     }
 
+    pub fn may_have_string<S: AsRef<str> + Copy>(
+        &mut self,
+        m: &Mapping,
+        field: S,
+    ) -> Option<String> {
+        m.get(&Value::String(field.as_ref().to_string()))
+            .and_then(|x| self.in_field(field, |v| v.must_be_string(x)))
+    }
+
     pub fn map_seq<T>(
         &mut self,
         seq: &Sequence,
@@ -723,6 +732,55 @@ mod tests {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be uint, but is string".to_string(),
+                }]
+            )
+        }
+    }
+
+    mod may_have_string {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_string_returns_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::String("hello".to_string()),
+            );
+
+            let actual = v.may_have_string(&m, "field");
+
+            assert_eq!(actual, Some("hello".to_string()));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_dosent_contain_string_returns_none() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.may_have_string(&m, "field");
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_contains_not_string_add_violation() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::String("field".to_string()), Value::Bool(true));
+
+            let actual = v.may_have_string(&m, "field");
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be string, but is bool".to_string(),
                 }]
             )
         }

@@ -31,3 +31,21 @@ tests:
         eq: 1
       stderr:
         beEmpty: true
+  - name: 'with stdin'
+    command:
+      - type: env
+        name: TEXEST
+      - "-"
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - cat
+            stdin: 'hello'
+    expect:
+      status:
+        eq: 0
+      stdout:
+        eq: 'hello'
+    teeStderr: true

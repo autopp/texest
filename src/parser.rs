@@ -41,6 +41,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
             v.must_have_seq(root, "tests", |v, tests| {
                 v.map_seq(tests, |v, test| {
                     v.must_be_map(test).and_then(|test| {
+                        let stdin = v.may_have_string(test, "stdin").unwrap_or_default();
                         let timeout = v.may_have_uint(test, "timeout").unwrap_or(DEFAULT_TIMEOUT);
                         let tee_stdout = v.may_have_bool(test, "teeStdout").unwrap_or(false);
                         let tee_stderr = v.may_have_bool(test, "teeStderr").unwrap_or(false);
@@ -57,6 +58,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             command,
+                            stdin,
                             timeout: Duration::from_secs(timeout),
                             tee_stdout,
                             tee_stderr,
@@ -95,18 +97,21 @@ mod tests {
             }
         }
 
-        fn test_cases(cases: Vec<(Vec<&str>, u64, bool, bool)>) -> Vec<TestCase> {
+        fn test_cases(cases: Vec<(Vec<&str>, &str, u64, bool, bool)>) -> Vec<TestCase> {
             cases
                 .iter()
                 .enumerate()
-                .map(|(i, (command, timeout, tee_stdout, tee_stderr))| TestCase {
-                    filename: FILENAME.to_string(),
-                    path: format!("$.tests[{}]", i),
-                    command: command.iter().map(|x| x.to_string()).collect(),
-                    timeout: Duration::from_secs(*timeout),
-                    tee_stdout: *tee_stdout,
-                    tee_stderr: *tee_stderr,
-                })
+                .map(
+                    |(i, (command, stdin, timeout, tee_stdout, tee_stderr))| TestCase {
+                        filename: FILENAME.to_string(),
+                        path: format!("$.tests[{}]", i),
+                        command: command.iter().map(|x| x.to_string()).collect(),
+                        stdin: stdin.to_string(),
+                        timeout: Duration::from_secs(*timeout),
+                        tee_stdout: *tee_stdout,
+                        tee_stderr: *tee_stderr,
+                    },
+                )
                 .collect()
         }
 
@@ -115,21 +120,25 @@ mod tests {
 tests:
     - command:
         - echo
-        - hello", test_cases(vec![(vec!["echo", "hello"], 10, false, false)]))]
+        - hello", test_cases(vec![(vec!["echo", "hello"], "", 10, false, false)]))]
         #[case("with command contains timeout", "
 tests:
     - command:
         - echo
         - hello
-      timeout: 5", test_cases(vec![(vec!["echo", "hello"], 5, false, false)]))]
-        #[rstest]
+      timeout: 5", test_cases(vec![(vec!["echo", "hello"], "", 5, false, false)]))]
         #[case("with command cotains tee_stdout & tee_stderr", "
 tests:
     - command:
         - echo
         - hello
       teeStdout: true
-      teeStderr: true", test_cases(vec![(vec!["echo", "hello"], 10, true, true)]))]
+      teeStderr: true", test_cases(vec![(vec!["echo", "hello"], "", 10, true, true)]))]
+        #[case("with command contains stdin", "
+tests:
+    - command:
+        - cat
+      stdin: hello", test_cases(vec![(vec!["cat"], "hello", 10, false, false)]))]
         fn success_case(#[case] title: &str, #[case] input: &str, #[case] expected: Vec<TestCase>) {
             let filename = FILENAME.to_string();
             let actual: Result<Vec<TestCase>, Error> = parse(filename.clone(), input.as_bytes());
