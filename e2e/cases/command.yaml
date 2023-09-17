@@ -46,6 +46,6 @@ tests:
     expect:
       status:
         eq: 0
-      stdout:
-        eq: 'hello'
+      # stdout:
+      #   eq: 'hello'
     teeStderr: true

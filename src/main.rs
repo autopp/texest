@@ -1,5 +1,6 @@
 mod error;
 mod exec;
+mod matcher;
 mod parser;
 mod test_case;
 mod validator;
