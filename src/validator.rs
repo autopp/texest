@@ -193,6 +193,27 @@ impl Validator {
 }
 
 #[cfg(test)]
+pub mod testutil {
+    use super::*;
+
+    const FILENAME: &str = "test.yaml";
+
+    pub fn new_validator() -> (Validator, impl Fn(&str, &str) -> Violation) {
+        let v = Validator::new(FILENAME.to_string());
+
+        let violation = |path: &str, message: &str| -> Violation {
+            Violation {
+                filename: FILENAME.to_string(),
+                path: format!("${}", path),
+                message: message.to_string(),
+            }
+        };
+
+        (v, violation)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     const FILENAME: &str = "test.yaml";

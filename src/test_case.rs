@@ -1,6 +1,6 @@
 use std::{fmt::Debug, time::Duration};
 
-use crate::matcher::StatusMatcher;
+use crate::matcher::Matcher;
 
 #[derive(Debug)]
 pub struct TestCase {
@@ -11,7 +11,7 @@ pub struct TestCase {
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
-    pub status_matcher: Option<Box<dyn StatusMatcher>>,
+    pub status_matcher: Option<Box<dyn Matcher<i32>>>,
 }
 
 impl PartialEq for TestCase {
