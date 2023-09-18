@@ -3,6 +3,7 @@ mod exec;
 mod matcher;
 mod parser;
 mod test_case;
+mod test_case_expr;
 mod validator;
 
 use std::{fs::File, process::Command};
