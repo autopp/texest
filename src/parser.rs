@@ -1,26 +1,29 @@
 use std::time::Duration;
 
 use crate::{
-    test_case::TestCase,
+    test_case_expr::TestCaseExpr,
     validator::{Validator, Violation},
 };
 
 #[derive(PartialEq, Debug)]
 pub struct Error {
+    pub filename: String,
     pub message: String,
     pub violations: Vec<Violation>,
 }
 
 impl Error {
-    fn without_violations(message: String) -> Self {
+    fn without_violations(filename: String, message: String) -> Self {
         Self {
+            filename,
             message,
             violations: vec![],
         }
     }
 
-    fn with_violations(message: String, violations: Vec<Violation>) -> Self {
+    fn with_violations(filename: String, message: String, violations: Vec<Violation>) -> Self {
         Self {
+            filename,
             message,
             violations,
         }
@@ -29,13 +32,17 @@ impl Error {
 
 const DEFAULT_TIMEOUT: u64 = 10;
 
-pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCase>, Error> {
-    let ast = serde_yaml::from_reader(reader)
-        .map_err(|err| Error::without_violations(format!("cannot parse {}: {}", filename, err)))?;
+pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCaseExpr>, Error> {
+    let ast = serde_yaml::from_reader(reader).map_err(|err| {
+        Error::without_violations(
+            filename.clone(),
+            format!("cannot parse {}: {}", filename.clone(), err),
+        )
+    })?;
 
-    let mut v = Validator::new(filename);
+    let mut v = Validator::new(filename.clone());
 
-    let test_cases = v
+    let test_case_exprs = v
         .must_be_map(&ast)
         .and_then(|root| {
             v.must_have_seq(root, "tests", |v, tests| {
@@ -54,7 +61,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                             }
                         })
                         .flatten()
-                        .map(|command| TestCase {
+                        .map(|command| TestCaseExpr {
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             command,
@@ -70,7 +77,8 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
         })
         .flatten();
 
-    test_cases.ok_or_else(|| Error::with_violations("parse error".to_string(), v.violations))
+    test_case_exprs
+        .ok_or_else(|| Error::with_violations(filename, "parse error".to_string(), v.violations))
 }
 
 #[cfg(test)]
@@ -83,8 +91,9 @@ mod tests {
         use rstest::rstest;
 
         const FILENAME: &str = "test.yaml";
-        fn parse_error(violations: Vec<Violation>) -> Result<Vec<TestCase>, Error> {
+        fn parse_error(violations: Vec<Violation>) -> Result<Vec<TestCaseExpr>, Error> {
             Err(Error::with_violations(
+                FILENAME.to_string(),
                 "parse error".to_string(),
                 violations,
             ))
@@ -98,12 +107,12 @@ mod tests {
             }
         }
 
-        fn test_cases(cases: Vec<(Vec<&str>, &str, u64, bool, bool)>) -> Vec<TestCase> {
+        fn test_case_exprs(cases: Vec<(Vec<&str>, &str, u64, bool, bool)>) -> Vec<TestCaseExpr> {
             cases
                 .iter()
                 .enumerate()
                 .map(
-                    |(i, (command, stdin, timeout, tee_stdout, tee_stderr))| TestCase {
+                    |(i, (command, stdin, timeout, tee_stdout, tee_stderr))| TestCaseExpr {
                         filename: FILENAME.to_string(),
                         path: format!("$.tests[{}]", i),
                         command: command.iter().map(|x| x.to_string()).collect(),
@@ -122,28 +131,33 @@ mod tests {
 tests:
     - command:
         - echo
-        - hello", test_cases(vec![(vec!["echo", "hello"], "", 10, false, false)]))]
+        - hello", test_case_exprs(vec![(vec!["echo", "hello"], "", 10, false, false)]))]
         #[case("with command contains timeout", "
 tests:
     - command:
         - echo
         - hello
-      timeout: 5", test_cases(vec![(vec!["echo", "hello"], "", 5, false, false)]))]
+      timeout: 5", test_case_exprs(vec![(vec!["echo", "hello"], "", 5, false, false)]))]
         #[case("with command cotains tee_stdout & tee_stderr", "
 tests:
     - command:
         - echo
         - hello
       teeStdout: true
-      teeStderr: true", test_cases(vec![(vec!["echo", "hello"], "", 10, true, true)]))]
+      teeStderr: true", test_case_exprs(vec![(vec!["echo", "hello"], "", 10, true, true)]))]
         #[case("with command contains stdin", "
 tests:
     - command:
         - cat
-      stdin: hello", test_cases(vec![(vec!["cat"], "hello", 10, false, false)]))]
-        fn success_case(#[case] title: &str, #[case] input: &str, #[case] expected: Vec<TestCase>) {
+      stdin: hello", test_case_exprs(vec![(vec!["cat"], "hello", 10, false, false)]))]
+        fn success_case(
+            #[case] title: &str,
+            #[case] input: &str,
+            #[case] expected: Vec<TestCaseExpr>,
+        ) {
             let filename = FILENAME.to_string();
-            let actual: Result<Vec<TestCase>, Error> = parse(filename.clone(), input.as_bytes());
+            let actual: Result<Vec<TestCaseExpr>, Error> =
+                parse(filename.clone(), input.as_bytes());
 
             assert_eq!(actual, Ok(expected), "{}", title)
         }
@@ -163,7 +177,7 @@ tests:
             #[case] violations: Vec<(&str, &str)>,
         ) {
             let filename = FILENAME.to_string();
-            let actual: Result<Vec<TestCase>, Error> = parse(filename, input.as_bytes());
+            let actual = parse(filename, input.as_bytes());
             assert_eq!(
                 actual,
                 parse_error(
