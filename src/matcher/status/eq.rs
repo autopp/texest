@@ -1,4 +1,4 @@
-use std::{any::Any};
+use std::any::Any;
 
 use crate::{matcher::Matcher, validator::Validator};
 

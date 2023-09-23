@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-
-
 use super::{status::parse_eq_matcher, MatcherParser};
 
 pub struct MatcherRegistry<T> {
@@ -27,10 +25,10 @@ impl<T> MatcherRegistry<T> {
         &self,
         name: String,
         v: &mut super::Validator,
-        x: &serde_yaml::Value,
+        param: &serde_yaml::Value,
     ) -> Option<Box<dyn super::Matcher<T>>> {
         match self.matchers.get(&name) {
-            Some(parser) => v.in_field(name, |v| parser(v, x)),
+            Some(parser) => v.in_field(name, |v| parser(v, param)),
             None => {
                 v.add_violation(format!("{} matcher {} is not defined", self.target, name));
                 None
@@ -45,4 +43,82 @@ pub fn new_status_matcher_registry() -> StatusMatcherRegistry {
     let mut r = StatusMatcherRegistry::new("status".to_string());
     r.register("eq".to_string(), parse_eq_matcher);
     r
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    mod matcher_registry {
+        use super::*;
+        mod parse {
+            use std::vec;
+
+            use crate::{
+                matcher::testutil::{error_parse, parse_success, TestMatcher, VIOLATION_MESSAGE},
+                validator::{Validator, Violation},
+            };
+
+            use super::*;
+            use serde_yaml::Value;
+
+            const NAME: &str = "some";
+
+            #[test]
+            fn success_case() {
+                let mut r = MatcherRegistry::<i32>::new("test".to_string());
+                r.register(NAME.to_string(), parse_success);
+
+                let mut v = Validator::new("test.yaml".to_string());
+                let param = Value::from(true);
+
+                let actual = r.parse(NAME.to_string(), &mut v, &param);
+
+                assert_eq!(
+                    actual.unwrap().as_ref(),
+                    TestMatcher::new_success::<i32>(param).as_any()
+                )
+            }
+
+            #[test]
+            fn failure_case_undefined() {
+                let r = MatcherRegistry::<i32>::new("test".to_string());
+
+                let mut v = Validator::new("test.yaml".to_string());
+                let param = Value::from(true);
+
+                let actual = r.parse(NAME.to_string(), &mut v, &param);
+
+                assert!(actual.is_none());
+                assert_eq!(
+                    v.violations,
+                    vec![Violation {
+                        filename: "test.yaml".to_string(),
+                        path: "$".to_string(),
+                        message: format!("test matcher {} is not defined", NAME)
+                    },]
+                )
+            }
+
+            #[test]
+            fn failure_case_parse_error() {
+                let mut r = MatcherRegistry::<i32>::new("test".to_string());
+                r.register(NAME.to_string(), error_parse);
+
+                let mut v = Validator::new("test.yaml".to_string());
+                let param = Value::from(true);
+
+                let actual = r.parse(NAME.to_string(), &mut v, &param);
+
+                assert!(actual.is_none());
+                assert_eq!(
+                    v.violations,
+                    vec![Violation {
+                        filename: "test.yaml".to_string(),
+                        path: format!("$.{}", NAME),
+                        message: VIOLATION_MESSAGE.to_string()
+                    },]
+                )
+            }
+        }
+    }
 }
