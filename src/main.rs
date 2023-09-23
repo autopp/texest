@@ -69,7 +69,6 @@ fn main() {
     if !errs.is_empty() {
         errs.iter().for_each(|err| {
             let err = err.as_ref().unwrap_err();
-            eprintln!("{}: {}", err.filename, err.message);
             err.violations.iter().for_each(|violation| {
                 eprintln!(
                     "{}:{}: {}",

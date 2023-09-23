@@ -4,10 +4,14 @@ use serde_yaml::{Mapping, Value};
 
 use crate::{
     matcher::{Matcher, StatusMatcherRegistry},
-    parser::Error,
     test_case::TestCase,
-    validator::Validator,
+    validator::{Validator, Violation},
 };
+
+#[derive(Debug, PartialEq)]
+pub struct EvalError {
+    pub violations: Vec<Violation>,
+}
 
 #[derive(Debug, PartialEq)]
 pub struct TestCaseExpr {
@@ -24,7 +28,7 @@ pub struct TestCaseExpr {
 pub fn eval(
     status_mr: &StatusMatcherRegistry,
     test_case_expr: &TestCaseExpr,
-) -> Result<Vec<TestCase>, Error> {
+) -> Result<Vec<TestCase>, EvalError> {
     let mut v = Validator::new_with_paths(
         test_case_expr.filename.clone(),
         vec![test_case_expr.path.clone()],
@@ -159,5 +163,7 @@ mod tests {
 
             assert_eq!(actual, Ok(expected), "{}", title);
         }
+
+        fn failure_cases() {}
     }
 }
