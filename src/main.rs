@@ -7,7 +7,7 @@ mod test_case;
 mod test_case_expr;
 mod validator;
 
-use std::{fs::File, process::Command};
+use std::fs::File;
 
 use clap::Parser;
 use exec::execute_command;
@@ -82,33 +82,43 @@ fn main() {
 
     let test_cases = oks.iter().flat_map(|ok| ok.as_ref().unwrap());
 
-    let mut results = test_cases.map(|test_case| {
-        Command::new(test_case.command.get(0).unwrap())
-            .args(test_case.command.get(1..).unwrap())
-            .output()
-            .map_or(false, |output| output.status.success());
-
-        rt.block_on(execute_command(
-            test_case.command.clone(),
-            test_case.stdin.clone(),
-            test_case.timeout,
-        ))
-        .map(|output| {
-            if test_case.tee_stdout {
-                println!("{}", output.stdout);
-            }
-            if test_case.tee_stderr {
-                println!("{}", output.stderr);
-            }
-            output
+    let mut results = test_cases
+        .map(|test_case| {
+            let output = rt
+                .block_on(execute_command(
+                    test_case.command.clone(),
+                    test_case.stdin.clone(),
+                    test_case.timeout,
+                ))
+                .map(|output| {
+                    if test_case.tee_stdout {
+                        println!("{}", output.stdout);
+                    }
+                    if test_case.tee_stderr {
+                        println!("{}", output.stderr);
+                    }
+                    output
+                });
+            (test_case, output)
         })
-    });
+        .map(|(test_case, result)| {
+            result
+                .map(|output| {
+                    if let exec::Status::Exit(code) = output.status {
+                        test_case.status_matchers.iter().all(|matcher| {
+                            match matcher.matches(code) {
+                                Ok((passed, _)) => passed,
+                                Err(_) => false,
+                            }
+                        })
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false)
+        });
 
-    if !results.all(|result| {
-        result
-            .map(|output| matches!(output.status, exec::Status::Exit(0)))
-            .unwrap_or(false)
-    }) {
+    if !results.all(|passed| passed) {
         std::process::exit(1)
     }
 }

@@ -15,22 +15,6 @@ tests:
         eq: 0
       stderr:
         beEmpty: true
-  - name: 'with failed command'
-    command:
-      - type: env
-        name: TEXEST
-      - "-"
-    stdin:
-      format: yaml
-      value:
-        tests:
-          - command:
-              - 'false'
-    expect:
-      status:
-        eq: 1
-      stderr:
-        beEmpty: true
   - name: 'with stdin'
     command:
       - type: env

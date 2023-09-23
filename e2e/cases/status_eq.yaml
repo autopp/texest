@@ -1,0 +1,37 @@
+tests:
+  - name: 'status eq matcher with matched status'
+    command:
+      - type: env
+        name: TEXEST
+      - '-'
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - 'false'
+            expect:
+              status:
+                eq: 1
+    teeStdout: true
+    teeStderr: true
+    expect:
+      status:
+        eq: 0
+  - name: 'status eq matcher with wrong status'
+    command:
+      - type: env
+        name: TEXEST
+      - '-'
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - 'false'
+            expect:
+              status:
+                eq: 0
+    expect:
+      status:
+        eq: 1
