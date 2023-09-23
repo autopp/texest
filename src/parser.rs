@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use serde_yaml::Mapping;
+
 use crate::{
     test_case_expr::TestCaseExpr,
     validator::{Validator, Violation},
@@ -52,6 +54,14 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                         let timeout = v.may_have_uint(test, "timeout").unwrap_or(DEFAULT_TIMEOUT);
                         let tee_stdout = v.may_have_bool(test, "teeStdout").unwrap_or(false);
                         let tee_stderr = v.may_have_bool(test, "teeStderr").unwrap_or(false);
+                        let (status_matchers, _, _) = v
+                            .may_have_map(test, "expect", |v, expect| {
+                                let status_matchers = v
+                                    .may_have_map(expect, "status", |_, status| status.clone())
+                                    .unwrap_or(Mapping::new());
+                                (status_matchers, Mapping::new(), Mapping::new())
+                            })
+                            .unwrap_or((Mapping::new(), Mapping::new(), Mapping::new()));
                         v.must_have_seq(test, "command", |v, command| {
                             if command.is_empty() {
                                 v.add_violation("should not be empty");
@@ -69,7 +79,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                             timeout: Duration::from_secs(timeout),
                             tee_stdout,
                             tee_stderr,
-                            status_matchers: None,
+                            status_matchers,
                         })
                     })
                 })
@@ -77,18 +87,36 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
         })
         .flatten();
 
-    test_case_exprs
-        .ok_or_else(|| Error::with_violations(filename, "parse error".to_string(), v.violations))
+    match test_case_exprs {
+        Some(test_case_exprs) => {
+            if v.violations.is_empty() {
+                Ok(test_case_exprs)
+            } else {
+                Err(Error::with_violations(
+                    filename,
+                    "parse error".to_string(),
+                    v.violations,
+                ))
+            }
+        }
+        None => Err(Error::with_violations(
+            filename,
+            "parse error".to_string(),
+            v.violations,
+        )),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     mod parse {
-        use std::time::Duration;
+
+        use crate::{ast::testuitl::mapping, test_case_expr::testutil::TestCaseExprTemplate};
 
         use super::*;
         use rstest::rstest;
+        use serde_yaml::Value;
 
         const FILENAME: &str = "test.yaml";
         fn parse_error(violations: Vec<Violation>) -> Result<Vec<TestCaseExpr>, Error> {
@@ -107,59 +135,67 @@ mod tests {
             }
         }
 
-        fn test_case_exprs(cases: Vec<(Vec<&str>, &str, u64, bool, bool)>) -> Vec<TestCaseExpr> {
-            cases
-                .iter()
-                .enumerate()
-                .map(
-                    |(i, (command, stdin, timeout, tee_stdout, tee_stderr))| TestCaseExpr {
-                        filename: FILENAME.to_string(),
-                        path: format!("$.tests[{}]", i),
-                        command: command.iter().map(|x| x.to_string()).collect(),
-                        stdin: stdin.to_string(),
-                        timeout: Duration::from_secs(*timeout),
-                        tee_stdout: *tee_stdout,
-                        tee_stderr: *tee_stderr,
-                        status_matchers: None,
-                    },
-                )
-                .collect()
-        }
-
         #[rstest]
         #[case("with command only", "
 tests:
     - command:
         - echo
-        - hello", test_case_exprs(vec![(vec!["echo", "hello"], "", 10, false, false)]))]
+        - hello", vec![TestCaseExprTemplate::default()])]
         #[case("with command contains timeout", "
 tests:
     - command:
         - echo
         - hello
-      timeout: 5", test_case_exprs(vec![(vec!["echo", "hello"], "", 5, false, false)]))]
+      timeout: 5", vec![TestCaseExprTemplate {
+            timeout: 5,
+            ..Default::default()
+        }])]
         #[case("with command cotains tee_stdout & tee_stderr", "
 tests:
     - command:
         - echo
         - hello
       teeStdout: true
-      teeStderr: true", test_case_exprs(vec![(vec!["echo", "hello"], "", 10, true, true)]))]
+      teeStderr: true", vec![TestCaseExprTemplate {
+            tee_stdout: true,
+            tee_stderr: true,
+            ..Default::default()
+        }])]
         #[case("with command contains stdin", "
 tests:
     - command:
         - cat
-      stdin: hello", test_case_exprs(vec![(vec!["cat"], "hello", 10, false, false)]))]
+      stdin: hello", vec![TestCaseExprTemplate {
+            command: vec!["cat"],
+            stdin: "hello",
+            ..Default::default()
+        }])]
+        #[case("with status matcher", "
+tests:
+    - command:
+        - echo
+        - hello
+      expect:
+        status:
+          success: true", vec![TestCaseExprTemplate {
+            status_matchers: mapping(vec![("success", Value::from(true))]),
+            ..Default::default()
+        }])]
         fn success_case(
             #[case] title: &str,
             #[case] input: &str,
-            #[case] expected: Vec<TestCaseExpr>,
+            #[case] expected: Vec<TestCaseExprTemplate>,
         ) {
             let filename = FILENAME.to_string();
             let actual: Result<Vec<TestCaseExpr>, Error> =
                 parse(filename.clone(), input.as_bytes());
 
-            assert_eq!(actual, Ok(expected), "{}", title)
+            assert_eq!(
+                actual,
+                Ok(expected.into_iter().map(|x| x.build()).collect()),
+                "{}",
+                title
+            )
         }
 
         #[rstest]
@@ -171,6 +207,8 @@ tests:
         #[case("when test command is not seq", "tests: [{command: 42}]", vec![("$.tests[0].command", "should be seq, but is uint")])]
         #[case("when test command contains not string", "tests: [{command: [42]}]", vec![("$.tests[0].command[0]", "should be string, but is uint")])]
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
+        #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
+        #[case("when test status matcher is not map", "tests: [{command: [echo], expect: {status: 42}}]", vec![("$.tests[0].expect.status", "should be map, but is uint")])]
         fn error_case(
             #[case] title: &str,
             #[case] input: &str,

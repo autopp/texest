@@ -1,3 +1,4 @@
+use crate::ast::Ast;
 use serde_yaml::{Mapping, Sequence, Value};
 
 #[derive(PartialEq, Debug, Clone)]
@@ -5,31 +6,6 @@ pub struct Violation {
     pub filename: String,
     pub path: String,
     pub message: String,
-}
-
-trait Ast {
-    fn type_name(&self) -> String;
-}
-
-impl Ast for Value {
-    fn type_name(&self) -> String {
-        match self {
-            Value::Null => "nil".to_string(),
-            Value::Bool(_) => "bool".to_string(),
-            Value::Number(n) => if n.is_u64() {
-                "uint"
-            } else if n.is_i64() {
-                "int"
-            } else {
-                "float"
-            }
-            .to_string(),
-            Value::String(_) => "string".to_string(),
-            Value::Sequence(_) => "seq".to_string(),
-            Value::Mapping(_) => "map".to_string(),
-            Value::Tagged(t) => t.value.type_name(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -129,6 +105,19 @@ impl Validator {
             self.add_violation(format!("should be string, but is {}", x.type_name()));
         }
         s.map(String::from)
+    }
+
+    pub fn may_have_map<'a, T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &'a Mapping) -> T>(
+        &mut self,
+        m: &'a Mapping,
+        field: S,
+        mut f: F,
+    ) -> Option<T> {
+        m.get(&Value::String(field.as_ref().to_string()))
+            .and_then(|x| {
+                self.in_field(field, |v| v.must_be_map(x))
+                    .map(|m| self.in_field(field, |v| f(v, m)))
+            })
     }
 
     pub fn may_have_seq<
@@ -520,6 +509,74 @@ mod tests {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be string, but is bool".to_string(),
+                }]
+            )
+        }
+    }
+
+    mod may_have_map {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_map_calls_callback_and_return_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            let inner = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::Mapping(inner.clone()),
+            );
+
+            let actual = v.may_have_map(&m, "field", |v, s_in_f| {
+                assert_eq!(&inner, s_in_f);
+                v.add_violation("error");
+                42
+            });
+
+            assert_eq!(actual, Some(42));
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "error".to_string(),
+                }]
+            )
+        }
+
+        #[test]
+        fn when_map_dosent_contain_map_do_nothing() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.may_have_map(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn when_map_contains_not_map_add_violation() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(
+                Value::String("field".to_string()),
+                Value::String("answer".to_string()),
+            );
+
+            let actual = v.may_have_map(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be map, but is string".to_string(),
                 }]
             )
         }

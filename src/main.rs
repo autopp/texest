@@ -1,3 +1,4 @@
+mod ast;
 mod error;
 mod exec;
 mod matcher;
