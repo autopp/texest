@@ -68,61 +68,77 @@ pub fn eval(
 }
 
 #[cfg(test)]
+pub mod testutil {
+    use std::time::Duration;
+
+    use serde_yaml::Mapping;
+
+    use super::TestCaseExpr;
+
+    pub struct TestCaseExprTemplate {
+        pub filename: &'static str,
+        pub path: &'static str,
+        pub command: Vec<&'static str>,
+        pub stdin: &'static str,
+        pub timeout: u64,
+        pub tee_stdout: bool,
+        pub tee_stderr: bool,
+        pub status_matchers: Option<Mapping>,
+    }
+
+    impl TestCaseExprTemplate {
+        pub const DEFAULT_FILENAME: &str = "a";
+        pub const DEFAULT_PATH: &str = "$.tests[0]";
+
+        pub fn default_command() -> Vec<&'static str> {
+            vec!["echo", "hello"]
+        }
+
+        pub fn build(&self) -> TestCaseExpr {
+            TestCaseExpr {
+                filename: self.filename.to_string(),
+                path: self.path.to_string(),
+                command: self.command.iter().map(|x| x.to_string()).collect(),
+                stdin: self.stdin.to_string(),
+                timeout: Duration::from_secs(self.timeout),
+                tee_stdout: self.tee_stdout,
+                tee_stderr: self.tee_stderr,
+                status_matchers: self.status_matchers.clone(),
+            }
+        }
+    }
+
+    impl Default for TestCaseExprTemplate {
+        fn default() -> Self {
+            Self {
+                filename: TestCaseExprTemplate::DEFAULT_FILENAME,
+                path: TestCaseExprTemplate::DEFAULT_PATH,
+                command: TestCaseExprTemplate::default_command(),
+                stdin: "",
+                timeout: 1,
+                tee_stdout: false,
+                tee_stderr: false,
+                status_matchers: None,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     mod eval {
-        use crate::matcher::testutil::{
-            new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
-            VIOLATION_MESSAGE,
+        use crate::{
+            matcher::testutil::{
+                new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
+                VIOLATION_MESSAGE,
+            },
+            test_case_expr::testutil::TestCaseExprTemplate,
         };
 
         use super::*;
         use rstest::rstest;
         use serde_yaml::{Mapping, Value};
-
-        struct GivenTestCaseExpr {
-            filename: &'static str,
-            path: &'static str,
-            command: Vec<&'static str>,
-            stdin: &'static str,
-            timeout: u64,
-            tee_stdout: bool,
-            tee_stderr: bool,
-            status_matchers: Option<Mapping>,
-        }
-
-        const FILENAME: &str = "test.yaml";
-        const PATH: &str = "$.tests[0]";
-
-        impl Default for GivenTestCaseExpr {
-            fn default() -> Self {
-                Self {
-                    filename: FILENAME,
-                    path: PATH,
-                    command: vec!["echo", "hello"],
-                    stdin: "",
-                    timeout: 1,
-                    tee_stdout: false,
-                    tee_stderr: false,
-                    status_matchers: None,
-                }
-            }
-        }
-
-        impl GivenTestCaseExpr {
-            fn build(&self) -> TestCaseExpr {
-                TestCaseExpr {
-                    filename: self.filename.to_string(),
-                    path: self.path.to_string(),
-                    command: self.command.iter().map(|x| x.to_string()).collect(),
-                    stdin: self.stdin.to_string(),
-                    timeout: Duration::from_secs(self.timeout),
-                    tee_stdout: self.tee_stdout,
-                    tee_stderr: self.tee_stderr,
-                    status_matchers: self.status_matchers.clone(),
-                }
-            }
-        }
 
         fn mapping(v: Vec<(&str, Value)>) -> Mapping {
             let mut m = Mapping::new();
@@ -134,16 +150,16 @@ mod tests {
 
         fn violation(path: &str, message: &str) -> Violation {
             Violation {
-                filename: FILENAME.to_string(),
-                path: PATH.to_string() + path,
+                filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                path: TestCaseExprTemplate::DEFAULT_PATH.to_string() + path,
                 message: message.to_string(),
             }
         }
 
         #[rstest]
-        #[case("with smallest case", GivenTestCaseExpr::default(), vec![TestCase {
-            filename: FILENAME.to_string(),
-            path: PATH.to_string(),
+        #[case("with smallest case", TestCaseExprTemplate::default(), vec![TestCase {
+            filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+            path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
             command: vec!["echo".to_string(), "hello".to_string()],
             stdin: "".to_string(),
             timeout: Duration::from_secs(1),
@@ -152,7 +168,7 @@ mod tests {
             status_matchers: vec!(),
         }])]
         #[case("with smallest case",
-            GivenTestCaseExpr {
+            TestCaseExprTemplate {
                 status_matchers: Some(mapping(vec![
                     (SUCCESS_MATCHER, Value::from(true)),
                 ])),
@@ -160,8 +176,8 @@ mod tests {
             },
             vec![
                 TestCase {
-                    filename: FILENAME.to_string(),
-                    path: PATH.to_string(),
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
                     stdin: "".to_string(),
                     timeout: Duration::from_secs(1),
@@ -173,7 +189,7 @@ mod tests {
         )]
         fn success_cases(
             #[case] title: &str,
-            #[case] given: GivenTestCaseExpr,
+            #[case] given: TestCaseExprTemplate,
             #[case] expected: Vec<TestCase>,
         ) {
             let status_mr = new_test_matcher_registry();
@@ -185,7 +201,7 @@ mod tests {
 
         #[rstest]
         #[case("with undefined status matcher",
-            GivenTestCaseExpr {
+            TestCaseExprTemplate {
                 status_matchers: Some(mapping(vec![
                     ("unknown", Value::from(true)),
                 ])),
@@ -196,7 +212,7 @@ mod tests {
             ]
         )]
         #[case("with invalid status matcher",
-            GivenTestCaseExpr {
+            TestCaseExprTemplate {
                 status_matchers: Some(mapping(vec![
                     (PARSE_ERROR_MATCHER, Value::from(true)),
                 ])),
@@ -208,7 +224,7 @@ mod tests {
         )]
         fn failure_cases(
             #[case] title: &str,
-            #[case] given: GivenTestCaseExpr,
+            #[case] given: TestCaseExprTemplate,
             #[case] expected_violations: Vec<Violation>,
         ) {
             let status_mr = new_test_matcher_registry();
