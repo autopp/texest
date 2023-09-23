@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+
+
 use super::{status::parse_eq_matcher, MatcherParser};
 
 pub struct MatcherRegistry<T> {
@@ -27,7 +29,13 @@ impl<T> MatcherRegistry<T> {
         v: &mut super::Validator,
         x: &serde_yaml::Value,
     ) -> Option<Box<dyn super::Matcher<T>>> {
-        self.matchers.get(&name).and_then(|parser| parser(v, x))
+        match self.matchers.get(&name) {
+            Some(parser) => v.in_field(name, |v| parser(v, x)),
+            None => {
+                v.add_violation(format!("{} matcher {} is not defined", self.target, name));
+                None
+            }
+        }
     }
 }
 

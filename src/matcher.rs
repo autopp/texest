@@ -92,21 +92,21 @@ pub mod testutil {
     }
 
     pub fn parse_success<T: Debug>(
-        v: &mut Validator,
+        _v: &mut Validator,
         x: &serde_yaml::Value,
     ) -> Option<Box<dyn Matcher<T>>> {
         Some(TestMatcher::new_success(x.clone()))
     }
 
     pub fn parse_failure<T: Debug>(
-        v: &mut Validator,
+        _v: &mut Validator,
         x: &serde_yaml::Value,
     ) -> Option<Box<dyn Matcher<T>>> {
         Some(TestMatcher::new_failure(x.clone()))
     }
 
     pub fn parse_error<T: Debug>(
-        v: &mut Validator,
+        _v: &mut Validator,
         x: &serde_yaml::Value,
     ) -> Option<Box<dyn Matcher<T>>> {
         Some(TestMatcher::new_error(x.clone()))
@@ -114,7 +114,7 @@ pub mod testutil {
 
     pub fn error_parse<T: Debug>(
         v: &mut Validator,
-        x: &serde_yaml::Value,
+        _x: &serde_yaml::Value,
     ) -> Option<Box<dyn Matcher<T>>> {
         v.add_violation(VIOLATION_MESSAGE);
         None

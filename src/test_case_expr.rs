@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use serde_yaml::{Mapping, Value};
+use serde_yaml::Mapping;
 
 use crate::{
-    matcher::{Matcher, StatusMatcherRegistry},
+    matcher::StatusMatcherRegistry,
     test_case::TestCase,
     validator::{Validator, Violation},
 };
@@ -34,40 +34,51 @@ pub fn eval(
         vec![test_case_expr.path.clone()],
     );
 
-    let status_matchers: Vec<Box<dyn Matcher<i32>>> = test_case_expr
-        .status_matchers
-        .as_ref()
-        .map(|m| {
-            m.into_iter()
-                .filter_map(|(name, param)| {
-                    v.must_be_string(name)
-                        .and_then(|name| status_mr.parse(name, &mut v, param))
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or(vec![]);
+    let status_matchers = v.in_field("expect.status", |v| {
+        test_case_expr
+            .status_matchers
+            .as_ref()
+            .map(|m| {
+                m.into_iter()
+                    .filter_map(|(name, param)| {
+                        v.must_be_string(name)
+                            .and_then(|name| status_mr.parse(name, v, param))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or(vec![])
+    });
 
-    Ok(vec![TestCase {
-        filename: test_case_expr.filename.clone(),
-        path: test_case_expr.path.clone(),
-        command: test_case_expr.command.clone(),
-        stdin: test_case_expr.stdin.clone(),
-        timeout: test_case_expr.timeout,
-        tee_stdout: test_case_expr.tee_stdout,
-        tee_stderr: test_case_expr.tee_stderr,
-        status_matchers,
-    }])
+    if v.violations.is_empty() {
+        Ok(vec![TestCase {
+            filename: test_case_expr.filename.clone(),
+            path: test_case_expr.path.clone(),
+            command: test_case_expr.command.clone(),
+            stdin: test_case_expr.stdin.clone(),
+            timeout: test_case_expr.timeout,
+            tee_stdout: test_case_expr.tee_stdout,
+            tee_stderr: test_case_expr.tee_stderr,
+            status_matchers,
+        }])
+    } else {
+        Err(EvalError {
+            violations: v.violations,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     mod eval {
-        use crate::matcher::testutil::{new_test_matcher_registry, TestMatcher, SUCCESS_MATCHER};
+        use crate::matcher::testutil::{
+            new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
+            VIOLATION_MESSAGE,
+        };
 
         use super::*;
         use rstest::rstest;
-        use serde_yaml::Mapping;
+        use serde_yaml::{Mapping, Value};
 
         struct GivenTestCaseExpr {
             filename: &'static str,
@@ -121,6 +132,14 @@ mod tests {
             m
         }
 
+        fn violation(path: &str, message: &str) -> Violation {
+            Violation {
+                filename: FILENAME.to_string(),
+                path: PATH.to_string() + path,
+                message: message.to_string(),
+            }
+        }
+
         #[rstest]
         #[case("with smallest case", GivenTestCaseExpr::default(), vec![TestCase {
             filename: FILENAME.to_string(),
@@ -164,6 +183,46 @@ mod tests {
             assert_eq!(actual, Ok(expected), "{}", title);
         }
 
-        fn failure_cases() {}
+        #[rstest]
+        #[case("with undefined status matcher",
+            GivenTestCaseExpr {
+                status_matchers: Some(mapping(vec![
+                    ("unknown", Value::from(true)),
+                ])),
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.status", "test matcher unknown is not defined")
+            ]
+        )]
+        #[case("with invalid status matcher",
+            GivenTestCaseExpr {
+                status_matchers: Some(mapping(vec![
+                    (PARSE_ERROR_MATCHER, Value::from(true)),
+                ])),
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.status.parse_error", VIOLATION_MESSAGE)
+            ]
+        )]
+        fn failure_cases(
+            #[case] title: &str,
+            #[case] given: GivenTestCaseExpr,
+            #[case] expected_violations: Vec<Violation>,
+        ) {
+            let status_mr = new_test_matcher_registry();
+
+            let actual = eval(&status_mr, &given.build());
+
+            assert_eq!(
+                actual,
+                Err(EvalError {
+                    violations: expected_violations
+                }),
+                "{}",
+                title
+            );
+        }
     }
 }
