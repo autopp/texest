@@ -48,6 +48,14 @@ impl Validator {
         }
     }
 
+    pub fn new_with_paths(filename: String, paths: Vec<String>) -> Self {
+        Self {
+            filename,
+            paths,
+            violations: Vec::new(),
+        }
+    }
+
     pub fn current_path(&self) -> String {
         self.paths.join("")
     }

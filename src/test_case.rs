@@ -11,7 +11,7 @@ pub struct TestCase {
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
-    pub status_matcher: Option<Box<dyn Matcher<i32>>>,
+    pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
 }
 
 impl PartialEq for TestCase {
@@ -27,15 +27,15 @@ impl PartialEq for TestCase {
             return false;
         }
 
-        if let Some(status_matcher) = &self.status_matcher {
-            other
-                .status_matcher
-                .as_ref()
-                .is_some_and(|other_status_matcher| {
-                    status_matcher.eq(other_status_matcher.as_any())
-                })
-        } else {
-            other.status_matcher.is_none()
+        if self.status_matchers.len() != other.status_matchers.len() {
+            return false;
         }
+
+        self.status_matchers
+            .iter()
+            .zip(other.status_matchers.iter())
+            .all(|(self_status_matcher, other_status_matcher)| {
+                self_status_matcher.eq(other_status_matcher.as_any())
+            })
     }
 }

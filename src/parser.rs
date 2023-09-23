@@ -69,7 +69,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<Vec<TestCas
                             timeout: Duration::from_secs(timeout),
                             tee_stdout,
                             tee_stderr,
-                            status_matcher: None,
+                            status_matchers: None,
                         })
                     })
                 })
@@ -120,7 +120,7 @@ mod tests {
                         timeout: Duration::from_secs(*timeout),
                         tee_stdout: *tee_stdout,
                         tee_stderr: *tee_stderr,
-                        status_matcher: None,
+                        status_matchers: None,
                     },
                 )
                 .collect()

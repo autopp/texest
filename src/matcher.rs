@@ -16,7 +16,7 @@ pub type MatcherParser<T> =
 pub use registry::{new_status_matcher_registry, StatusMatcherRegistry};
 
 #[cfg(test)]
-mod testutil {
+pub mod testutil {
     use std::{any::Any, fmt::Debug};
 
     use serde_yaml::Value;
@@ -65,37 +65,51 @@ mod testutil {
         }
     }
 
-    pub fn success_matcher<T: Debug>(
-        v: &mut Validator,
-        x: &serde_yaml::Value,
-    ) -> Option<Box<dyn Matcher<T>>> {
-        let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
-            kind: Kind::Success,
-            param: x.clone(),
-        });
-        Some(b)
+    impl TestMatcher {
+        pub fn new_success<T: Debug>(param: Value) -> Box<dyn Matcher<T>> {
+            let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
+                kind: Kind::Success,
+                param,
+            });
+            b
+        }
+
+        pub fn new_failure<T: Debug>(param: Value) -> Box<dyn Matcher<T>> {
+            let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
+                kind: Kind::Failure,
+                param,
+            });
+            b
+        }
+
+        pub fn new_error<T: Debug>(param: Value) -> Box<dyn Matcher<T>> {
+            let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
+                kind: Kind::Error,
+                param,
+            });
+            b
+        }
     }
 
-    pub fn failure_matcher<T: Debug>(
+    pub fn parse_success<T: Debug>(
         v: &mut Validator,
         x: &serde_yaml::Value,
     ) -> Option<Box<dyn Matcher<T>>> {
-        let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
-            kind: Kind::Failure,
-            param: x.clone(),
-        });
-        Some(b)
+        Some(TestMatcher::new_success(x.clone()))
     }
 
-    pub fn error_matcher<T: Debug>(
+    pub fn parse_failure<T: Debug>(
         v: &mut Validator,
         x: &serde_yaml::Value,
     ) -> Option<Box<dyn Matcher<T>>> {
-        let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
-            kind: Kind::Error,
-            param: x.clone(),
-        });
-        Some(b)
+        Some(TestMatcher::new_failure(x.clone()))
+    }
+
+    pub fn parse_error<T: Debug>(
+        v: &mut Validator,
+        x: &serde_yaml::Value,
+    ) -> Option<Box<dyn Matcher<T>>> {
+        Some(TestMatcher::new_error(x.clone()))
     }
 
     pub fn error_parse<T: Debug>(
@@ -113,9 +127,9 @@ mod testutil {
 
     pub fn new_test_matcher_registry<T: Debug>() -> MatcherRegistry<T> {
         let mut r = MatcherRegistry::new("test".to_string());
-        r.register(SUCCESS_MATCHER.to_string(), success_matcher);
-        r.register(FAILURE_MATCHER.to_string(), failure_matcher);
-        r.register(ERROR_MATCHER.to_string(), error_matcher);
+        r.register(SUCCESS_MATCHER.to_string(), parse_success);
+        r.register(FAILURE_MATCHER.to_string(), parse_failure);
+        r.register(ERROR_MATCHER.to_string(), parse_error);
         r.register(PARSE_ERROR_MATCHER.to_string(), error_parse);
         r
     }
