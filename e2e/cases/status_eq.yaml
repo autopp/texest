@@ -13,8 +13,6 @@ tests:
             expect:
               status:
                 eq: 1
-    teeStdout: true
-    teeStderr: true
     expect:
       status:
         eq: 0

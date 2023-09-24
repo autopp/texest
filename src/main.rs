@@ -10,7 +10,8 @@ mod validator;
 use std::fs::File;
 
 use clap::Parser;
-use exec::execute_command;
+
+use test_case::{TestCase, TestResult};
 use test_case_expr::eval;
 
 use crate::parser::parse;
@@ -21,7 +22,6 @@ struct Args {
 }
 
 fn main() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
     let args = Args::parse();
 
     let (oks, errs): (Vec<_>, Vec<_>) = args
@@ -82,43 +82,9 @@ fn main() {
 
     let test_cases = oks.iter().flat_map(|ok| ok.as_ref().unwrap());
 
-    let mut results = test_cases
-        .map(|test_case| {
-            let output = rt
-                .block_on(execute_command(
-                    test_case.command.clone(),
-                    test_case.stdin.clone(),
-                    test_case.timeout,
-                ))
-                .map(|output| {
-                    if test_case.tee_stdout {
-                        println!("{}", output.stdout);
-                    }
-                    if test_case.tee_stderr {
-                        println!("{}", output.stderr);
-                    }
-                    output
-                });
-            (test_case, output)
-        })
-        .map(|(test_case, result)| {
-            result
-                .map(|output| {
-                    if let exec::Status::Exit(code) = output.status {
-                        test_case.status_matchers.iter().all(|matcher| {
-                            match matcher.matches(code) {
-                                Ok((passed, _)) => passed,
-                                Err(_) => false,
-                            }
-                        })
-                    } else {
-                        false
-                    }
-                })
-                .unwrap_or(false)
-        });
+    let results = test_cases.map(TestCase::run).collect::<Vec<_>>();
 
-    if !results.all(|passed| passed) {
+    if !results.iter().all(TestResult::is_passed) {
         std::process::exit(1)
     }
 }
