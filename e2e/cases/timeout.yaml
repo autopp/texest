@@ -10,10 +10,8 @@ tests:
         tests:
           - command:
               - 'sleep'
-              - '1'
+              - '2'
             timeout: 0
-    teeStdout: true
-    teeStderr: true
     expect:
       status:
         eq: 1

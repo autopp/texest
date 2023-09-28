@@ -3,15 +3,17 @@ mod error;
 mod exec;
 mod matcher;
 mod parser;
+mod reporter;
 mod runner;
 mod test_case;
 mod test_case_expr;
 mod validator;
 
-use std::{collections::HashSet, fs::File};
+use std::{collections::HashSet, fs::File, io::Write};
 
 use clap::Parser;
 
+use reporter::{Formatter, Reporter};
 use runner::run_tests;
 use test_case::{TestCaseFile, TestResult};
 use test_case_expr::eval;
@@ -126,7 +128,11 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
-    let results = run_tests(test_case_files);
+    let mut w: Box<dyn Write> = Box::new(std::io::stdout());
+    let mut f: Box<dyn Formatter> = Box::new(reporter::SimpleReporter {});
+    let mut r = Reporter::new(&mut w, true, &mut f);
+
+    let results = run_tests(test_case_files, &mut r);
 
     if !results.iter().all(TestResult::is_passed) {
         std::process::exit(EXIT_CODE_TEST_FAILED)
