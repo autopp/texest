@@ -9,9 +9,13 @@ mod test_case;
 mod test_case_expr;
 mod validator;
 
-use std::{collections::HashSet, fs::File, io::Write};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{IsTerminal, Write},
+};
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 use reporter::{Formatter, Reporter};
 use runner::run_tests;
@@ -20,9 +24,18 @@ use test_case_expr::eval;
 
 use crate::parser::parse;
 
+#[derive(Debug, Clone, ValueEnum)]
+enum Color {
+    Auto,
+    Always,
+    Never,
+}
+
 #[derive(Parser)]
 struct Args {
     files: Vec<String>,
+    #[clap(value_enum, long = "color", default_value_t = Color::Auto)]
+    color: Color,
 }
 
 const EXIT_CODE_TEST_FAILED: i32 = 1;
@@ -128,9 +141,15 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
+    let use_color = match args.color {
+        Color::Auto => std::io::stdout().is_terminal(),
+        Color::Always => true,
+        Color::Never => false,
+    };
+
     let mut w: Box<dyn Write> = Box::new(std::io::stdout());
     let mut f: Box<dyn Formatter> = Box::new(reporter::SimpleReporter {});
-    let mut r = Reporter::new(&mut w, true, &mut f);
+    let mut r = Reporter::new(&mut w, use_color, &mut f);
 
     let results = run_tests(test_case_files, &mut r);
 
