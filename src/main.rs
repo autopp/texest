@@ -40,6 +40,7 @@ struct Args {
 
 const EXIT_CODE_TEST_FAILED: i32 = 1;
 const EXIT_CODE_INVALID_INPUT: i32 = 2;
+const EXIT_CODE_INTERNAL_ERROR: i32 = 3;
 
 fn main() {
     let args = Args::parse();
@@ -153,7 +154,12 @@ fn main() {
 
     let results = run_tests(test_case_files, &mut r);
 
-    if !results.iter().all(TestResult::is_passed) {
+    if let Err(err) = results {
+        eprintln!("internal error: {}", err);
+        std::process::exit(EXIT_CODE_INTERNAL_ERROR);
+    }
+
+    if !results.unwrap().iter().all(TestResult::is_passed) {
         std::process::exit(EXIT_CODE_TEST_FAILED)
     }
 }
