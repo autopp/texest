@@ -3,7 +3,7 @@ use std::time::Duration;
 use serde_yaml::Mapping;
 
 use crate::{
-    matcher::StatusMatcherRegistry,
+    matcher::{StatusMatcherRegistry, StreamMatcherRegistry},
     test_case::TestCase,
     validator::{Validator, Violation},
 };
@@ -23,6 +23,8 @@ pub struct TestCaseExpr {
     pub tee_stdout: bool,
     pub tee_stderr: bool,
     pub status_matchers: Mapping,
+    pub stdout_matchers: Mapping,
+    pub stderr_matchers: Mapping,
 }
 
 #[derive(Debug, PartialEq)]
@@ -33,6 +35,7 @@ pub struct TestCaseExprFile {
 
 pub fn eval(
     status_mr: &StatusMatcherRegistry,
+    stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
 ) -> Result<Vec<TestCase>, EvalError> {
     let mut v = Validator::new_with_paths(
@@ -51,6 +54,28 @@ pub fn eval(
             .collect::<Vec<_>>()
     });
 
+    let stdout_matchers = v.in_field("expect.stdout", |v| {
+        test_case_expr
+            .stdout_matchers
+            .iter()
+            .filter_map(|(name, param)| {
+                v.must_be_string(name)
+                    .and_then(|name| stream_mr.parse(name, v, param))
+            })
+            .collect::<Vec<_>>()
+    });
+
+    let stderr_matchers = v.in_field("expect.stderr", |v| {
+        test_case_expr
+            .stderr_matchers
+            .iter()
+            .filter_map(|(name, param)| {
+                v.must_be_string(name)
+                    .and_then(|name| stream_mr.parse(name, v, param))
+            })
+            .collect::<Vec<_>>()
+    });
+
     if v.violations.is_empty() {
         Ok(vec![TestCase {
             filename: test_case_expr.filename.clone(),
@@ -61,6 +86,8 @@ pub fn eval(
             tee_stdout: test_case_expr.tee_stdout,
             tee_stderr: test_case_expr.tee_stderr,
             status_matchers,
+            stdout_matchers,
+            stderr_matchers,
         }])
     } else {
         Err(EvalError {
@@ -86,6 +113,8 @@ pub mod testutil {
         pub tee_stdout: bool,
         pub tee_stderr: bool,
         pub status_matchers: Mapping,
+        pub stdout_matchers: Mapping,
+        pub stderr_matchers: Mapping,
     }
 
     impl TestCaseExprTemplate {
@@ -106,6 +135,8 @@ pub mod testutil {
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
                 status_matchers: self.status_matchers.clone(),
+                stdout_matchers: self.stdout_matchers.clone(),
+                stderr_matchers: self.stderr_matchers.clone(),
             }
         }
     }
@@ -121,6 +152,8 @@ pub mod testutil {
                 tee_stdout: false,
                 tee_stderr: false,
                 status_matchers: Mapping::new(),
+                stdout_matchers: Mapping::new(),
+                stderr_matchers: Mapping::new(),
             }
         }
     }
@@ -160,7 +193,9 @@ mod tests {
             timeout: Duration::from_secs(10),
             tee_stdout: false,
             tee_stderr: false,
-            status_matchers: vec!(),
+            status_matchers: vec![],
+            stdout_matchers: vec![],
+            stderr_matchers: vec![],
         }])]
         #[case("with status matcher case",
             TestCaseExprTemplate {
@@ -178,7 +213,53 @@ mod tests {
                     timeout: Duration::from_secs(10),
                     tee_stdout: false,
                     tee_stderr: false,
-                    status_matchers: vec!(TestMatcher::new_success(Value::from(true)))
+                    status_matchers: vec!(TestMatcher::new_success(Value::from(true))),
+                    stdout_matchers: vec![],
+                    stderr_matchers: vec![],
+                },
+            ]
+        )]
+        #[case("with stdout matcher case",
+            TestCaseExprTemplate {
+                stdout_matchers: mapping(vec![
+                    (SUCCESS_MATCHER, Value::from(true)),
+                ]),
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    stdin: "".to_string(),
+                    timeout: Duration::from_secs(10),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                    status_matchers: vec![],
+                    stdout_matchers: vec![TestMatcher::new_success(Value::from(true))],
+                    stderr_matchers: vec![],
+                },
+            ]
+        )]
+        #[case("with stderr matcher case",
+            TestCaseExprTemplate {
+                stderr_matchers: mapping(vec![
+                    (SUCCESS_MATCHER, Value::from(true)),
+                ]),
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    stdin: "".to_string(),
+                    timeout: Duration::from_secs(10),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                    status_matchers: vec![],
+                    stdout_matchers: vec![],
+                    stderr_matchers: vec![TestMatcher::new_success(Value::from(true))],
                 },
             ]
         )]
@@ -188,8 +269,9 @@ mod tests {
             #[case] expected: Vec<TestCase>,
         ) {
             let status_mr = new_test_matcher_registry();
+            let stream_mr = new_test_matcher_registry();
 
-            let actual = eval(&status_mr, &given.build());
+            let actual = eval(&status_mr, &stream_mr, &given.build());
 
             assert_eq!(actual, Ok(expected), "{}", title);
         }
@@ -217,14 +299,59 @@ mod tests {
                 violation(".expect.status.parse_error", VIOLATION_MESSAGE)
             ]
         )]
+        #[case("with undefined stdout matcher",
+            TestCaseExprTemplate {
+                stdout_matchers: mapping(vec![
+                    ("unknown", Value::from(true)),
+                ]),
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.stdout", "test matcher unknown is not defined")
+            ]
+        )]
+        #[case("with invalid stdout matcher",
+            TestCaseExprTemplate {
+                stdout_matchers: mapping(vec![
+                    (PARSE_ERROR_MATCHER, Value::from(true)),
+                ]),
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.stdout.parse_error", VIOLATION_MESSAGE)
+            ]
+        )]
+        #[case("with undefined stderr matcher",
+            TestCaseExprTemplate {
+                stderr_matchers: mapping(vec![
+                    ("unknown", Value::from(true)),
+                ]),
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.stderr", "test matcher unknown is not defined")
+            ]
+        )]
+        #[case("with invalid stderr matcher",
+            TestCaseExprTemplate {
+                stderr_matchers: mapping(vec![
+                    (PARSE_ERROR_MATCHER, Value::from(true)),
+                ]),
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.stderr.parse_error", VIOLATION_MESSAGE)
+            ]
+        )]
         fn failure_cases(
             #[case] title: &str,
             #[case] given: TestCaseExprTemplate,
             #[case] expected_violations: Vec<Violation>,
         ) {
             let status_mr = new_test_matcher_registry();
+            let stream_mr = new_test_matcher_registry();
 
-            let actual = eval(&status_mr, &given.build());
+            let actual = eval(&status_mr, &stream_mr, &given.build());
 
             assert_eq!(
                 actual,

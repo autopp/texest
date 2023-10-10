@@ -54,12 +54,18 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                         let timeout = v.may_have_uint(test, "timeout").unwrap_or(DEFAULT_TIMEOUT);
                         let tee_stdout = v.may_have_bool(test, "teeStdout").unwrap_or(false);
                         let tee_stderr = v.may_have_bool(test, "teeStderr").unwrap_or(false);
-                        let (status_matchers, _, _) = v
+                        let (status_matchers, stdout_matchers, stderr_matchers) = v
                             .may_have_map(test, "expect", |v, expect| {
                                 let status_matchers = v
                                     .may_have_map(expect, "status", |_, status| status.clone())
                                     .unwrap_or(Mapping::new());
-                                (status_matchers, Mapping::new(), Mapping::new())
+                                let stdout_matchers = v
+                                    .may_have_map(expect, "stdout", |_, stdout| stdout.clone())
+                                    .unwrap_or(Mapping::new());
+                                let stderr_matchers = v
+                                    .may_have_map(expect, "stderr", |_, stderr| stderr.clone())
+                                    .unwrap_or(Mapping::new());
+                                (status_matchers, stdout_matchers, stderr_matchers)
                             })
                             .unwrap_or((Mapping::new(), Mapping::new(), Mapping::new()));
                         v.must_have_seq(test, "command", |v, command| {
@@ -80,6 +86,8 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                             tee_stdout,
                             tee_stderr,
                             status_matchers,
+                            stdout_matchers,
+                            stderr_matchers,
                         })
                     })
                 })
@@ -184,6 +192,28 @@ tests:
             status_matchers: mapping(vec![("success", Value::from(true))]),
             ..Default::default()
         }])]
+        #[case("with stdout matcher", "
+tests:
+    - command:
+        - echo
+        - hello
+      expect:
+        stdout:
+          be_empty: true", vec![TestCaseExprTemplate {
+            stdout_matchers: mapping(vec![("be_empty", Value::from(true))]),
+            ..Default::default()
+        }])]
+        #[case("with stderr matcher", "
+tests:
+    - command:
+        - echo
+        - hello
+      expect:
+        stderr:
+          be_empty: true", vec![TestCaseExprTemplate {
+            stderr_matchers: mapping(vec![("be_empty", Value::from(true))]),
+            ..Default::default()
+        }])]
         fn success_case(
             #[case] title: &str,
             #[case] input: &str,
@@ -214,6 +244,8 @@ tests:
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
         #[case("when test status matcher is not map", "tests: [{command: [echo], expect: {status: 42}}]", vec![("$.tests[0].expect.status", "should be map, but is uint")])]
+        #[case("when test stdout matcher is not map", "tests: [{command: [echo], expect: {stdout: 42}}]", vec![("$.tests[0].expect.stdout", "should be map, but is uint")])]
+        #[case("when test stderr matcher is not map", "tests: [{command: [echo], expect: {stderr: 42}}]", vec![("$.tests[0].expect.stderr", "should be map, but is uint")])]
         fn error_case(
             #[case] title: &str,
             #[case] input: &str,

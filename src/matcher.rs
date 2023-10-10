@@ -14,7 +14,10 @@ pub trait Matcher<T>: Debug + PartialEq<dyn Any> {
 pub type MatcherParser<T> =
     fn(v: &mut Validator, x: &serde_yaml::Value) -> Option<Box<dyn Matcher<T>>>;
 
-pub use registry::{new_status_matcher_registry, StatusMatcherRegistry};
+pub use registry::{
+    new_status_matcher_registry, new_stream_matcher_registry, StatusMatcherRegistry,
+    StreamMatcherRegistry,
+};
 
 #[cfg(test)]
 pub mod testutil {

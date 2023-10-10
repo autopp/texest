@@ -1,4 +1,4 @@
-use std::{fmt::Debug, time::Duration};
+use std::{ffi::OsString, fmt::Debug, time::Duration};
 
 use crate::{
     exec::{execute_command, Status},
@@ -15,6 +15,8 @@ pub struct TestCase {
     pub tee_stdout: bool,
     pub tee_stderr: bool,
     pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
+    pub stdout_matchers: Vec<Box<dyn Matcher<OsString>>>,
+    pub stderr_matchers: Vec<Box<dyn Matcher<OsString>>>,
 }
 
 pub struct TestCaseFile<'a> {
@@ -24,14 +26,22 @@ pub struct TestCaseFile<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TestResult {
-    Asserted { status: Vec<String> },
+    Asserted {
+        status: Vec<String>,
+        stdout: Vec<String>,
+        stderr: Vec<String>,
+    },
     ExecError(String),
 }
 
 impl TestResult {
     pub fn is_passed(&self) -> bool {
         match self {
-            TestResult::Asserted { status: messages } => messages.is_empty(),
+            TestResult::Asserted {
+                status,
+                stdout,
+                stderr,
+            } => status.is_empty() && stdout.is_empty() && stderr.is_empty(),
             TestResult::ExecError(_) => false,
         }
     }
@@ -111,7 +121,49 @@ impl TestCase {
             Status::Timeout => vec![format!("timed out")],
         };
 
-        TestResult::Asserted { status }
+        let stdout = self
+            .stdout_matchers
+            .iter()
+            .filter_map(|matcher| {
+                matcher
+                    .matches(output.stdout.clone())
+                    .map(
+                        |(passed, message)| {
+                            if passed {
+                                None
+                            } else {
+                                Some(message)
+                            }
+                        },
+                    )
+                    .unwrap_or_else(Some)
+            })
+            .collect::<Vec<_>>();
+
+        let stderr = self
+            .stderr_matchers
+            .iter()
+            .filter_map(|matcher| {
+                matcher
+                    .matches(output.stderr.clone())
+                    .map(
+                        |(passed, message)| {
+                            if passed {
+                                None
+                            } else {
+                                Some(message)
+                            }
+                        },
+                    )
+                    .unwrap_or_else(Some)
+            })
+            .collect::<Vec<_>>();
+
+        TestResult::Asserted {
+            status,
+            stdout,
+            stderr,
+        }
     }
 }
 
@@ -134,6 +186,8 @@ mod tests {
             stdin: &str,
             timeout: u64,
             status_matchers: Vec<Box<dyn Matcher<i32>>>,
+            stdout_matchers: Vec<Box<dyn Matcher<OsString>>>,
+            stderr_matchers: Vec<Box<dyn Matcher<OsString>>>,
         ) -> TestCase {
             TestCase {
                 filename: DEFAULT_FILENAME.to_string(),
@@ -144,25 +198,39 @@ mod tests {
                 tee_stdout: false,
                 tee_stderr: false,
                 status_matchers,
+                stdout_matchers,
+                stderr_matchers,
             }
         }
 
         #[rstest]
-        #[case("command is exit, no status matcher",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![] ),
-            TestResult::Asserted { status: vec![]} )]
+        #[case("command is exit, no matchers",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
+            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] } )]
         #[case("command is exit, status matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))]),
-            TestResult::Asserted { status: vec![] })]
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
+            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
         #[case("command is exit, status matchers are failed",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted { status: vec![FAILURE_MESSAGE.to_string()] })]
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
+            TestResult::Asserted { status: vec![FAILURE_MESSAGE.to_string()], stdout: vec![], stderr: vec![] })]
+        #[case("command is exit, stdout matchers are succeeded",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
+            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
+        #[case("command is exit, stdout matchers are failed",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
+            TestResult::Asserted { status: vec![], stdout: vec![FAILURE_MESSAGE.to_string()], stderr: vec![] })]
+        #[case("command is exit, stderr matchers are succeeded",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
+            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
+        #[case("command is exit, stderr matchers are failed",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
+            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![FAILURE_MESSAGE.to_string()] })]
         #[case("command is signaled",
-            given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted { status: vec!["signaled with 15".to_string()] })]
+            given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
+            TestResult::Asserted { status: vec!["signaled with 15".to_string()], stdout: vec![], stderr: vec![] })]
         #[case("command is timed out",
-            given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted { status: vec!["timed out".to_string()] })]
+            given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
+            TestResult::Asserted { status: vec!["timed out".to_string()], stdout: vec![], stderr: vec![] })]
         fn when_exec_succeeded(
             #[case] title: &str,
             #[case] given: TestCase,
@@ -174,7 +242,14 @@ mod tests {
 
         #[test]
         fn when_exec_failed() {
-            let given = given_test_case(vec!["_unknown"], "", DEFAULT_TIMEOUT, vec![]);
+            let given = given_test_case(
+                vec!["_unknown"],
+                "",
+                DEFAULT_TIMEOUT,
+                vec![],
+                vec![],
+                vec![],
+            );
 
             let actual = given.run();
 

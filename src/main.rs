@@ -90,6 +90,7 @@ fn main() {
     }
 
     let status_mr = matcher::new_status_matcher_registry();
+    let stream_mr = matcher::new_stream_matcher_registry();
 
     let eval_results = oks
         .iter()
@@ -98,7 +99,7 @@ fn main() {
             let test_cases = test_case_expr_file
                 .test_case_exprs
                 .iter()
-                .map(|test_case_expr| eval(&status_mr, test_case_expr))
+                .map(|test_case_expr| eval(&status_mr, &stream_mr, test_case_expr))
                 .collect::<Vec<_>>();
             (test_case_expr_file.filename.clone(), test_cases)
         })

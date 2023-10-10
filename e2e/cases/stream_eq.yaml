@@ -1,0 +1,37 @@
+tests:
+  - name: 'stream eq matcher with matched output'
+    command:
+      - type: env
+        name: TEXEST
+      - '-'
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - echo
+              - hello
+            expect:
+              stdout:
+                eq: "hello\n"
+    expect:
+      status:
+        eq: 0
+  - name: 'stream eq matcher with wrong output'
+    command:
+      - type: env
+        name: TEXEST
+      - '-'
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - echo
+              - 'hello'
+            expect:
+              stdout:
+                eq: "goodbye\n"
+    expect:
+      status:
+        eq: 1
