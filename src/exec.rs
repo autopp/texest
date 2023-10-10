@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::ExitStatusExt;
 use std::time::Duration;
 
@@ -15,8 +17,8 @@ pub enum Status {
 #[derive(PartialEq, Debug)]
 pub struct Output {
     pub status: Status,
-    pub stdout: String,
-    pub stderr: String,
+    pub stdout: OsString,
+    pub stderr: OsString,
 }
 
 pub async fn execute_command(
@@ -44,8 +46,8 @@ pub async fn execute_command(
             let output = cmd.wait_with_output().await.map_err(|err| format!("command execution failed: {}", err))?;
             Ok(Output {
                 status: Status::Timeout,
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                stdout: OsString::from_vec(output.stdout),
+                stderr: OsString::from_vec(output.stderr),
             })
         },
         result = cmd.wait() => {
@@ -59,16 +61,16 @@ pub async fn execute_command(
                         Err(format!("unknown process status: {}", status))
                     }?;
 
-                    let mut stdout = String::new();
-                    cmd.stdout.unwrap().read_to_string(&mut stdout).await.map_err(|err| err.to_string())?;
+                    let mut stdout: Vec<u8> = vec![];
+                    cmd.stdout.unwrap().read_to_end(&mut stdout).await.map_err(|err| err.to_string())?;
 
-                    let mut stderr = String::new();
-                    cmd.stderr.unwrap().read_to_string(&mut stderr).await.map_err(|err| err.to_string())?;
+                    let mut stderr: Vec<u8> = vec![];
+                    cmd.stderr.unwrap().read_to_end(&mut stderr).await.map_err(|err| err.to_string())?;
 
                     Ok(Output {
                         status,
-                        stdout,
-                        stderr,
+                        stdout: OsString::from_vec(stdout),
+                        stderr: OsString::from_vec(stderr),
                     })
                 },
                 Err(err) => Err(err.to_string()),
@@ -115,8 +117,8 @@ mod tests {
                 actual,
                 Ok(Output {
                     status,
-                    stdout: stdout.to_string(),
-                    stderr: stderr.to_string(),
+                    stdout: stdout.into(),
+                    stderr: stderr.into()
                 })
             );
         }

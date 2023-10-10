@@ -74,10 +74,10 @@ impl TestCase {
             ))
             .map(|output| {
                 if self.tee_stdout {
-                    println!("{}", output.stdout);
+                    println!("{}", output.stdout.to_string_lossy());
                 }
                 if self.tee_stderr {
-                    println!("{}", output.stderr);
+                    println!("{}", output.stderr.to_string_lossy());
                 }
                 output
             });
