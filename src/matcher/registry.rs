@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ffi::OsString};
 
-use super::{status::parse_eq_matcher, MatcherParser};
+use super::{status, stream, MatcherParser};
 
 pub struct MatcherRegistry<T> {
     target: String,
@@ -41,7 +41,15 @@ pub type StatusMatcherRegistry = MatcherRegistry<i32>;
 
 pub fn new_status_matcher_registry() -> StatusMatcherRegistry {
     let mut r = StatusMatcherRegistry::new("status".to_string());
-    r.register("eq".to_string(), parse_eq_matcher);
+    r.register("eq".to_string(), status::parse_eq_matcher);
+    r
+}
+
+pub type StreamMatcherRegistry = MatcherRegistry<OsString>;
+
+pub fn new_stream_matcher_registry() -> StreamMatcherRegistry {
+    let mut r = StreamMatcherRegistry::new("stream".to_string());
+    r.register("eq".to_string(), stream::parse_eq_matcher);
     r
 }
 

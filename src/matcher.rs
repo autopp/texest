@@ -1,5 +1,6 @@
 mod registry;
 mod status;
+mod stream;
 
 use std::{any::Any, fmt::Debug};
 
