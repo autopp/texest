@@ -19,7 +19,7 @@ pub fn run_tests(
         })
         .collect::<Result<Vec<TestResult>, String>>()?;
 
-    reporter.on_run_end(&test_results)?;
+    reporter.on_run_end(test_results.clone())?;
 
     Ok(test_results)
 }

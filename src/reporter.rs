@@ -56,7 +56,7 @@ pub trait Formatter {
         &mut self,
         w: &mut Box<dyn Write>,
         cm: &ColorMarker,
-        test_results: &Vec<TestResult>,
+        test_results: Vec<TestResult>,
     ) -> Result<(), String>;
 }
 
@@ -160,7 +160,7 @@ impl<'a, 'b> Reporter<'a, 'b> {
         self.formatter.on_test_case_end(self.w, &cm, test_result)
     }
 
-    pub fn on_run_end(&mut self, test_results: &Vec<TestResult>) -> Result<(), String> {
+    pub fn on_run_end(&mut self, test_results: Vec<TestResult>) -> Result<(), String> {
         let cm = ColorMarker::new(self.use_color);
         self.formatter.on_run_end(self.w, &cm, test_results)
     }

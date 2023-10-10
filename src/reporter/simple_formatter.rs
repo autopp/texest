@@ -38,7 +38,7 @@ impl Formatter for SimpleReporter {
         &mut self,
         w: &mut Box<dyn std::io::Write>,
         _cm: &super::ColorMarker,
-        test_results: &Vec<crate::test_case::TestResult>,
+        test_results: Vec<crate::test_case::TestResult>,
     ) -> Result<(), String> {
         let failed_count = test_results
             .iter()

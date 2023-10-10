@@ -22,7 +22,7 @@ pub struct TestCaseFile<'a> {
     pub test_cases: Vec<&'a TestCase>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TestResult {
     Asserted { status: Vec<String> },
     ExecError(String),
