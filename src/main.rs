@@ -1,6 +1,7 @@
 mod ast;
 mod error;
 mod exec;
+mod expr;
 mod matcher;
 mod parser;
 mod reporter;

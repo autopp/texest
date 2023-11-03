@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq)]
-pub struct EvalError {
+pub struct TestExprError {
     pub violations: Vec<Violation>,
 }
 
@@ -37,7 +37,7 @@ pub fn eval_test_expr(
     status_mr: &StatusMatcherRegistry,
     stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
-) -> Result<Vec<TestCase>, EvalError> {
+) -> Result<Vec<TestCase>, TestExprError> {
     let mut v = Validator::new_with_paths(
         test_case_expr.filename.clone(),
         vec![test_case_expr.path.clone()],
@@ -90,7 +90,7 @@ pub fn eval_test_expr(
             stderr_matchers,
         }])
     } else {
-        Err(EvalError {
+        Err(TestExprError {
             violations: v.violations,
         })
     }
@@ -355,7 +355,7 @@ mod tests {
 
             assert_eq!(
                 actual,
-                Err(EvalError {
+                Err(TestExprError {
                     violations: expected_violations
                 }),
                 "{}",
