@@ -33,7 +33,7 @@ pub struct TestCaseExprFile {
     pub test_case_exprs: Vec<TestCaseExpr>,
 }
 
-pub fn eval(
+pub fn eval_test_expr(
     status_mr: &StatusMatcherRegistry,
     stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
@@ -162,7 +162,7 @@ pub mod testutil {
 #[cfg(test)]
 mod tests {
     use super::*;
-    mod eval {
+    mod eval_test_case_expr {
         use crate::{
             ast::testuitl::mapping,
             matcher::testutil::{
@@ -271,7 +271,7 @@ mod tests {
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
-            let actual = eval(&status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(&status_mr, &stream_mr, &given.build());
 
             assert_eq!(actual, Ok(expected), "{}", title);
         }
@@ -351,7 +351,7 @@ mod tests {
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
-            let actual = eval(&status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(&status_mr, &stream_mr, &given.build());
 
             assert_eq!(
                 actual,

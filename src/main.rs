@@ -20,7 +20,7 @@ use clap::{Parser, ValueEnum};
 use reporter::{Formatter, Reporter};
 use runner::run_tests;
 use test_case::{TestCaseFile, TestResult};
-use test_case_expr::eval;
+use test_case_expr::eval_test_expr;
 
 use crate::parser::parse;
 
@@ -99,7 +99,7 @@ fn main() {
             let test_cases = test_case_expr_file
                 .test_case_exprs
                 .iter()
-                .map(|test_case_expr| eval(&status_mr, &stream_mr, test_case_expr))
+                .map(|test_case_expr| eval_test_expr(&status_mr, &stream_mr, test_case_expr))
                 .collect::<Vec<_>>();
             (test_case_expr_file.filename.clone(), test_cases)
         })
