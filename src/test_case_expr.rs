@@ -3,6 +3,7 @@ use std::time::Duration;
 use serde_yaml::Mapping;
 
 use crate::{
+    expr::{eval_expr, Expr},
     matcher::{StatusMatcherRegistry, StreamMatcherRegistry},
     test_case::TestCase,
     validator::{Validator, Violation},
@@ -17,7 +18,7 @@ pub struct TestExprError {
 pub struct TestCaseExpr {
     pub filename: String,
     pub path: String,
-    pub command: Vec<String>,
+    pub command: Vec<Expr>,
     pub stdin: String,
     pub timeout: Duration,
     pub tee_stdout: bool,
@@ -42,6 +43,22 @@ pub fn eval_test_expr(
         test_case_expr.filename.clone(),
         vec![test_case_expr.path.clone()],
     );
+
+    let command: Vec<String> = v.in_field("command", |v| {
+        test_case_expr
+            .command
+            .clone()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, x)| match eval_expr(x) {
+                Ok(value) => v.in_index(i, |v| v.must_be_string(&value)),
+                Err(message) => {
+                    v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
+                    None
+                }
+            })
+            .collect()
+    });
 
     let status_matchers = v.in_field("expect.status", |v| {
         test_case_expr
@@ -80,7 +97,7 @@ pub fn eval_test_expr(
         Ok(vec![TestCase {
             filename: test_case_expr.filename.clone(),
             path: test_case_expr.path.clone(),
-            command: test_case_expr.command.clone(),
+            command,
             stdin: test_case_expr.stdin.clone(),
             timeout: test_case_expr.timeout,
             tee_stdout: test_case_expr.tee_stdout,
@@ -100,14 +117,16 @@ pub fn eval_test_expr(
 pub mod testutil {
     use std::time::Duration;
 
-    use serde_yaml::Mapping;
+    use serde_yaml::{Mapping, Value};
+
+    use crate::expr::Expr;
 
     use super::TestCaseExpr;
 
     pub struct TestCaseExprTemplate {
         pub filename: &'static str,
         pub path: &'static str,
-        pub command: Vec<&'static str>,
+        pub command: Vec<Expr>,
         pub stdin: &'static str,
         pub timeout: u64,
         pub tee_stdout: bool,
@@ -121,15 +140,18 @@ pub mod testutil {
         pub const DEFAULT_FILENAME: &str = "test.yaml";
         pub const DEFAULT_PATH: &str = "$.tests[0]";
 
-        pub fn default_command() -> Vec<&'static str> {
-            vec!["echo", "hello"]
+        pub fn default_command() -> Vec<Expr> {
+            vec![
+                Expr::Literal(Value::from("echo".to_string())),
+                Expr::Literal(Value::from("hello".to_string())),
+            ]
         }
 
         pub fn build(&self) -> TestCaseExpr {
             TestCaseExpr {
                 filename: self.filename.to_string(),
                 path: self.path.to_string(),
-                command: self.command.iter().map(|x| x.to_string()).collect(),
+                command: self.command.clone(),
                 stdin: self.stdin.to_string(),
                 timeout: Duration::from_secs(self.timeout),
                 tee_stdout: self.tee_stdout,
@@ -277,6 +299,16 @@ mod tests {
         }
 
         #[rstest]
+        #[case("with eval error in command",
+            TestCaseExprTemplate {
+                command: vec![Expr::Literal(Value::from(true)), Expr::EnvVar("_undefined".to_string(), None)],
+                ..Default::default()
+            },
+            vec![
+                violation(".command[0]", "should be string, but is bool"),
+                violation(".command[1]", "eval error: env var _undefined is not defined"),
+            ]
+        )]
         #[case("with undefined status matcher",
             TestCaseExprTemplate {
                 status_matchers: mapping(vec![

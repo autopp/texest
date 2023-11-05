@@ -1,8 +1,9 @@
 use std::time::Duration;
 
-use serde_yaml::Mapping;
+use serde_yaml::{Mapping, Value};
 
 use crate::{
+    expr::Expr,
     test_case_expr::{TestCaseExpr, TestCaseExprFile},
     validator::{Validator, Violation},
 };
@@ -73,7 +74,10 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                                 v.add_violation("should not be empty");
                                 None
                             } else {
-                                v.map_seq(command, |v, arg| v.must_be_string(arg))
+                                v.map_seq(command, |v, arg| {
+                                    v.must_be_string(arg)
+                                        .map(|arg| Expr::Literal(Value::from(arg)))
+                                })
                             }
                         })
                         .flatten()
@@ -123,7 +127,9 @@ mod tests {
     use super::*;
     mod parse {
 
-        use crate::{ast::testuitl::mapping, test_case_expr::testutil::TestCaseExprTemplate};
+        use crate::{
+            ast::testuitl::mapping, expr::Expr, test_case_expr::testutil::TestCaseExprTemplate,
+        };
 
         use super::*;
         use rstest::rstest;
@@ -177,7 +183,7 @@ tests:
     - command:
         - cat
       stdin: hello", vec![TestCaseExprTemplate {
-            command: vec!["cat"],
+            command: vec![Expr::Literal(Value::from("cat".to_string()))],
             stdin: "hello",
             ..Default::default()
         }])]

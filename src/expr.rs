@@ -1,5 +1,6 @@
 use serde_yaml::Value;
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Literal(Value),
     EnvVar(String, Option<String>),
