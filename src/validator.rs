@@ -67,6 +67,10 @@ impl Validator {
         self.in_path(format!(".{}", field.as_ref()), f)
     }
 
+    pub fn may_be_map<'a>(&mut self, x: &'a Value) -> Option<&'a Mapping> {
+        x.as_mapping()
+    }
+
     pub fn must_be_map<'a>(&mut self, x: &'a Value) -> Option<&'a Mapping> {
         let m = x.as_mapping();
         if m.is_none() {
@@ -99,12 +103,30 @@ impl Validator {
         n
     }
 
+    pub fn may_be_string(&mut self, x: &Value) -> Option<String> {
+        x.as_str().map(String::from)
+    }
+
     pub fn must_be_string(&mut self, x: &Value) -> Option<String> {
         let s = x.as_str();
         if s.is_none() {
             self.add_violation(format!("should be string, but is {}", x.type_name()));
         }
         s.map(String::from)
+    }
+
+    pub fn may_be_qualified<'a>(&mut self, x: &'a Value) -> Option<(String, &'a Value)> {
+        self.may_be_map(x).and_then(|m| {
+            if m.len() == 1 {
+                let (key, value) = m.iter().next().unwrap();
+
+                key.as_str()
+                    .and_then(|s| s.strip_prefix('$'))
+                    .map(|name| (name.to_string(), value))
+            } else {
+                None
+            }
+        })
     }
 
     pub fn may_have_map<'a, T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &'a Mapping) -> T>(
@@ -369,6 +391,28 @@ mod tests {
         }
     }
 
+    mod may_be_map {
+        use super::*;
+
+        #[test]
+        fn returns_some_if_value_is_map() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            assert_eq!(v.may_be_map(&Value::Mapping(m.clone())), Some(&m));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_if_value_is_not_map() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::String("string".to_string());
+
+            assert_eq!(v.may_be_map(&value), None);
+            assert_eq!(v.violations, vec![])
+        }
+    }
+
     mod must_be_map {
         use super::*;
 
@@ -485,6 +529,28 @@ mod tests {
         }
     }
 
+    mod may_be_string {
+        use super::*;
+
+        #[test]
+        fn returns_the_string_when_value_is_string() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::String("hello".to_string());
+
+            assert_eq!(v.may_be_string(&value), Some("hello".to_string()));
+            assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_when_value_is_not_string() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let value = Value::Bool(true);
+
+            assert_eq!(v.may_be_string(&value), None);
+            assert_eq!(v.violations, vec![])
+        }
+    }
+
     mod must_be_string {
         use super::*;
 
@@ -511,6 +577,72 @@ mod tests {
                     message: "should be string, but is bool".to_string(),
                 }]
             )
+        }
+    }
+
+    mod may_be_qualified {
+        use super::*;
+
+        #[test]
+        fn returns_qualifier_and_value_when_qualified_map() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::from("$name"), Value::from("value"));
+            let m = Value::from(m);
+
+            let actual = v.may_be_qualified(&m);
+
+            assert_eq!(actual, Some(("name".to_string(), &Value::from("value"))));
+            assert_eq!(v.violations, vec![]);
+        }
+
+        #[test]
+        fn returns_none_when_map_is_empty() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Value::from(Mapping::new());
+
+            let actual = v.may_be_qualified(&m);
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![]);
+        }
+
+        #[test]
+        fn returns_none_when_map_contains_more_than_1_pairs() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::from("$name"), Value::from("value"));
+            m.insert(Value::from("$foo"), Value::from("bar"));
+            let m = Value::from(m);
+
+            let actual = v.may_be_qualified(&m);
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![]);
+        }
+
+        #[test]
+        fn returns_none_when_name_is_not_starting_with_dollar() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::from("name"), Value::from("value"));
+            let m = Value::from(m);
+
+            let actual = v.may_be_qualified(&m);
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![]);
+        }
+
+        #[test]
+        fn returns_none_when_given_is_not_map() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let given = Value::from("hello");
+
+            let actual = v.may_be_qualified(&given);
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![]);
         }
     }
 

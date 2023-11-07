@@ -74,10 +74,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                                 v.add_violation("should not be empty");
                                 None
                             } else {
-                                v.map_seq(command, |v, arg| {
-                                    v.must_be_string(arg)
-                                        .map(|arg| Expr::Literal(Value::from(arg)))
-                                })
+                                v.map_seq(command, |v, x| Some(parse_expr(v, x)))
                             }
                         })
                         .flatten()
@@ -122,6 +119,24 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
     }
 }
 
+fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
+    if v.may_be_string(x).is_some() {
+        return Expr::Literal(x.clone());
+    }
+
+    v.may_be_qualified(x)
+        .and_then(|(q, value)| {
+            if q == "env" {
+                v.in_field(".$env", |v| {
+                    v.may_be_string(value).map(|name| Expr::EnvVar(name, None))
+                })
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| Expr::Literal(x.clone()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +173,17 @@ tests:
     - command:
         - echo
         - hello", vec![TestCaseExprTemplate::default()])]
+        #[case("with command contains env var", "
+tests:
+    - command:
+        - echo
+        - $env: MESSAGE", vec![TestCaseExprTemplate {
+            command: vec![
+                Expr::Literal(Value::from("echo".to_string())),
+                Expr::EnvVar("MESSAGE".to_string(), None),
+            ],
+            ..Default::default()
+        }])]
         #[case("with command contains timeout", "
 tests:
     - command:
@@ -246,7 +272,6 @@ tests:
         #[case("when test is not map", "tests: [42]", vec![("$.tests[0]", "should be map, but is uint")])]
         #[case("when test dosen't have .command", "tests: [{}]", vec![("$.tests[0]", "should have .command as seq")])]
         #[case("when test command is not seq", "tests: [{command: 42}]", vec![("$.tests[0].command", "should be seq, but is uint")])]
-        #[case("when test command contains not string", "tests: [{command: [42]}]", vec![("$.tests[0].command[0]", "should be string, but is uint")])]
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
         #[case("when test status matcher is not map", "tests: [{command: [echo], expect: {status: 42}}]", vec![("$.tests[0].expect.status", "should be map, but is uint")])]
