@@ -117,9 +117,11 @@ pub fn eval_test_expr(
 pub mod testutil {
     use std::time::Duration;
 
-    use serde_yaml::{Mapping, Value};
+    use serde_yaml::{Mapping};
 
     use crate::expr::Expr;
+
+    use crate::expr::testutil::*;
 
     use super::TestCaseExpr;
 
@@ -141,10 +143,7 @@ pub mod testutil {
         pub const DEFAULT_PATH: &str = "$.tests[0]";
 
         pub fn default_command() -> Vec<Expr> {
-            vec![
-                Expr::Literal(Value::from("echo".to_string())),
-                Expr::Literal(Value::from("hello".to_string())),
-            ]
+            vec![literal_expr("echo"), literal_expr("hello")]
         }
 
         pub fn build(&self) -> TestCaseExpr {
@@ -187,6 +186,7 @@ mod tests {
     mod eval_test_case_expr {
         use crate::{
             ast::testuitl::mapping,
+            expr::testutil::{env_var_expr, literal_expr},
             matcher::testutil::{
                 new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
                 VIOLATION_MESSAGE,
@@ -301,7 +301,7 @@ mod tests {
         #[rstest]
         #[case("with eval error in command",
             TestCaseExprTemplate {
-                command: vec![Expr::Literal(Value::from(true)), Expr::EnvVar("_undefined".to_string(), None)],
+                command: vec![literal_expr(true), env_var_expr("_undefined")],
                 ..Default::default()
             },
             vec![

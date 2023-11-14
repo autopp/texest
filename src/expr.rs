@@ -17,6 +17,21 @@ pub fn eval_expr(expr: Expr) -> Result<Value, String> {
 }
 
 #[cfg(test)]
+pub mod testutil {
+    use serde_yaml::Value;
+
+    use super::Expr;
+
+    pub fn literal_expr(value: impl Into<Value>) -> Expr {
+        Expr::Literal(value.into())
+    }
+
+    pub fn env_var_expr(name: impl Into<String>) -> Expr {
+        Expr::EnvVar(name.into(), None)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::env::set_var;
 
