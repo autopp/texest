@@ -24,11 +24,17 @@ pub struct Output {
 pub async fn execute_command(
     command: Vec<String>,
     stdin: String,
+    env: &Vec<(String, String)>,
     timeout: Duration,
 ) -> Result<Output, String> {
     let mut cmd = Command::new(command.get(0).unwrap())
         .args(command.get(1..).unwrap())
         .stdin(std::process::Stdio::piped())
+        .envs(
+            env.iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<Vec<_>>(),
+        )
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -89,18 +95,21 @@ mod tests {
 
         #[rstest]
         #[tokio::test]
-        #[case("echo hello", "", 5, Status::Exit(0), "hello\n", "")]
+        #[case("echo hello", "", vec![], 5, Status::Exit(0), "hello\n", "")]
         #[tokio::test]
-        #[case("echo hello >&2", "", 5, Status::Exit(0), "", "hello\n")]
+        #[case("echo hello >&2", "", vec![], 5, Status::Exit(0), "", "hello\n")]
         #[tokio::test]
-        #[case("cat", "hello", 5, Status::Exit(0), "hello", "")]
+        #[case("cat", "hello", vec![], 5, Status::Exit(0), "hello", "")]
         #[tokio::test]
-        #[case("kill -TERM $$", "", 5, Status::Signal(15), "", "")]
+        #[case("printenv MESSAGE", "", vec![("MESSAGE", "hello")], 5, Status::Exit(0), "hello\n", "")]
         #[tokio::test]
-        #[case("sleep 5", "", 1, Status::Timeout, "", "")]
+        #[case("kill -TERM $$", "", vec![], 5, Status::Signal(15), "", "")]
+        #[tokio::test]
+        #[case("sleep 5", "", vec![], 1, Status::Timeout, "", "")]
         async fn success_cases(
             #[case] command: &str,
             #[case] stdin: &str,
+            #[case] env: Vec<(&str, &str)>,
             #[case] timeout: u64,
             #[case] status: Status,
             #[case] stdout: &str,
@@ -109,6 +118,9 @@ mod tests {
             let actual = execute_command(
                 vec!["bash".to_string(), "-c".to_string(), command.to_string()],
                 stdin.to_string(),
+                &env.iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
                 Duration::from_secs(timeout),
             )
             .await;

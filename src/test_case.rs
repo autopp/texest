@@ -80,6 +80,7 @@ impl TestCase {
             .block_on(execute_command(
                 self.command.clone(),
                 self.stdin.clone(),
+                &vec![],
                 self.timeout,
             ))
             .map(|output| {
