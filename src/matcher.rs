@@ -36,9 +36,6 @@ pub mod testutil {
         Error,
     }
 
-    pub const SUCCESS_MESSAGE: &str = "success";
-    pub const FAILURE_MESSAGE: &str = "failure";
-    pub const ERROR_MESSAGE: &str = "error";
     pub const VIOLATION_MESSAGE: &str = "violation";
 
     #[derive(Debug, Clone, PartialEq)]
@@ -56,11 +53,11 @@ pub mod testutil {
     }
 
     impl<T: Debug> Matcher<T> for TestMatcher {
-        fn matches(&self, _actual: T) -> Result<(bool, String), String> {
+        fn matches(&self, actual: T) -> Result<(bool, String), String> {
             match self.kind {
-                Kind::Success => Ok((true, SUCCESS_MESSAGE.to_string())),
-                Kind::Failure => Ok((false, FAILURE_MESSAGE.to_string())),
-                Kind::Error => Err(ERROR_MESSAGE.to_string()),
+                Kind::Success => Ok((true, Self::success_message(actual))),
+                Kind::Failure => Ok((false, Self::failure_message(actual))),
+                Kind::Error => Err(Self::error_message(actual)),
             }
         }
 
@@ -92,6 +89,18 @@ pub mod testutil {
                 param,
             });
             b
+        }
+
+        pub fn success_message(value: impl Debug) -> String {
+            format!("success: {:?}", value)
+        }
+
+        pub fn failure_message(value: impl Debug) -> String {
+            format!("failure: {:?}", value)
+        }
+
+        pub fn error_message(value: impl Debug) -> String {
+            format!("error: {:?}", value)
         }
     }
 
