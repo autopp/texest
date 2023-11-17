@@ -80,7 +80,7 @@ impl TestCase {
             .block_on(execute_command(
                 self.command.clone(),
                 self.stdin.clone(),
-                &vec![],
+                Vec::<(&str, &str)>::new(),
                 self.timeout,
             ))
             .map(|output| {

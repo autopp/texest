@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::process::ExitStatusExt;
@@ -21,20 +22,16 @@ pub struct Output {
     pub stderr: OsString,
 }
 
-pub async fn execute_command(
+pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
     command: Vec<String>,
     stdin: String,
-    env: &Vec<(String, String)>,
+    env: E,
     timeout: Duration,
 ) -> Result<Output, String> {
     let mut cmd = Command::new(command.get(0).unwrap())
         .args(command.get(1..).unwrap())
         .stdin(std::process::Stdio::piped())
-        .envs(
-            env.iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect::<Vec<_>>(),
-        )
+        .envs(env)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -118,9 +115,7 @@ mod tests {
             let actual = execute_command(
                 vec!["bash".to_string(), "-c".to_string(), command.to_string()],
                 stdin.to_string(),
-                &env.iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                    .collect(),
+                env,
                 Duration::from_secs(timeout),
             )
             .await;
