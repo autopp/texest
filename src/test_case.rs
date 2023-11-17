@@ -11,6 +11,7 @@ pub struct TestCase {
     pub path: String,
     pub command: Vec<String>,
     pub stdin: String,
+    pub env: Vec<(String, String)>,
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
@@ -80,7 +81,7 @@ impl TestCase {
             .block_on(execute_command(
                 self.command.clone(),
                 self.stdin.clone(),
-                Vec::<(&str, &str)>::new(),
+                self.env.clone(),
                 self.timeout,
             ))
             .map(|output| {
@@ -195,6 +196,7 @@ mod tests {
                 path: DEFAULT_PATH.to_string(),
                 command: command.iter().map(|x| x.to_string()).collect(),
                 stdin: stdin.to_string(),
+                env: vec![],
                 timeout: Duration::from_secs(timeout),
                 tee_stdout: false,
                 tee_stderr: false,

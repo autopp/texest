@@ -99,6 +99,7 @@ pub fn eval_test_expr(
             path: test_case_expr.path.clone(),
             command,
             stdin: test_case_expr.stdin.clone(),
+            env: vec![],
             timeout: test_case_expr.timeout,
             tee_stdout: test_case_expr.tee_stdout,
             tee_stderr: test_case_expr.tee_stderr,
@@ -117,7 +118,7 @@ pub fn eval_test_expr(
 pub mod testutil {
     use std::time::Duration;
 
-    use serde_yaml::{Mapping};
+    use serde_yaml::Mapping;
 
     use crate::expr::Expr;
 
@@ -212,6 +213,7 @@ mod tests {
             path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
             command: vec!["echo".to_string(), "hello".to_string()],
             stdin: "".to_string(),
+            env: vec![],
             timeout: Duration::from_secs(10),
             tee_stdout: false,
             tee_stderr: false,
@@ -232,6 +234,7 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
                     stdin: "".to_string(),
+                    env: vec![],
                     timeout: Duration::from_secs(10),
                     tee_stdout: false,
                     tee_stderr: false,
@@ -254,6 +257,7 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
                     stdin: "".to_string(),
+                    env: vec![],
                     timeout: Duration::from_secs(10),
                     tee_stdout: false,
                     tee_stderr: false,
@@ -276,6 +280,7 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
                     stdin: "".to_string(),
+                    env: vec![],
                     timeout: Duration::from_secs(10),
                     tee_stdout: false,
                     tee_stderr: false,
