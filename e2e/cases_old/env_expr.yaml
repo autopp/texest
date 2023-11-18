@@ -5,24 +5,21 @@ tests:
         name: TEXEST
       - '-'
     env:
-      - name: MESSAGE2
-        value: world
+      - name: MESSAGE
+        value: hello
     stdin:
       format: yaml
       value:
         tests:
           - command:
-              - bash
-              - -c
-              - 'printenv MESSAGE1; printenv MESSAGE2'
-            env:
-              MESSAGE1: "hello"
-              MESSAGE2: "world"
+              - echo
+              - '-n'
+              - $env: MESSAGE
             expect:
               status:
                 eq: 0
               stdout:
-                eq: "hello\nworld\n"
+                eq: hello
     expect:
       status:
         eq: 0

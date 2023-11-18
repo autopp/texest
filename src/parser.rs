@@ -1,8 +1,11 @@
 use std::time::Duration;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde_yaml::{Mapping, Value};
 
 use crate::{
+    ast::Ast,
     expr::Expr,
     test_case_expr::{TestCaseExpr, TestCaseExprFile},
     validator::{Validator, Violation},
@@ -34,6 +37,7 @@ impl Error {
 }
 
 const DEFAULT_TIMEOUT: u64 = 10;
+static VAR_NAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap());
 
 pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExprFile, Error> {
     let ast = serde_yaml::from_reader(reader).map_err(|err| {
@@ -69,6 +73,25 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                                 (status_matchers, stdout_matchers, stderr_matchers)
                             })
                             .unwrap_or((Mapping::new(), Mapping::new(), Mapping::new()));
+                        let env: Vec<(String, Expr)> = v.may_have_map(test, "env", |v, env| {
+                            env.iter()
+                                .filter_map(|(name, value)| {
+                                    if let Some(name) = v.may_be_string(name) {
+                                        if !VAR_NAME_RE.is_match(&name) {
+                                            v.add_violation("should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)");
+                                            return None
+                                        }
+                                        Some((name, parse_expr(v, value)))
+                                    } else {
+                                        v.add_violation(format!(
+                                            "all name should be not empty string, but contains {}",
+                                            name.type_name()
+                                        ));
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        }).unwrap_or(vec![]);
                         v.must_have_seq(test, "command", |v, command| {
                             if command.is_empty() {
                                 v.add_violation("should not be empty");
@@ -83,7 +106,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                             path: v.current_path(),
                             command,
                             stdin,
-                            env: vec![],
+                            env,
                             timeout: Duration::from_secs(timeout),
                             tee_stdout,
                             tee_stderr,
@@ -144,7 +167,12 @@ mod tests {
     mod parse {
 
         use crate::{
-            ast::testuitl::mapping, expr::Expr, test_case_expr::testutil::TestCaseExprTemplate,
+            ast::testuitl::mapping,
+            expr::{
+                testutil::{env_var_expr, literal_expr},
+                Expr,
+            },
+            test_case_expr::testutil::TestCaseExprTemplate,
         };
 
         use super::*;
@@ -214,6 +242,18 @@ tests:
             stdin: "hello",
             ..Default::default()
         }])]
+        #[case("with command contains env", "
+tests:
+    - command:
+        - echo
+        - hello
+      env:
+        MESSAGE1: hello
+        MESSAGE2:
+          $env: FOO", vec![TestCaseExprTemplate {
+            env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", env_var_expr("FOO"))],
+            ..Default::default()
+        }])]
         #[case("with status matcher", "
 tests:
     - command:
@@ -275,6 +315,10 @@ tests:
         #[case("when test command is not seq", "tests: [{command: 42}]", vec![("$.tests[0].command", "should be seq, but is uint")])]
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
+        #[case("when test env is not map", "tests: [{command: [echo], env: 42}]", vec![("$.tests[0].env", "should be map, but is uint")])]
+        #[case("when test env contains not string key", "tests: [{command: [echo], env: {true: hello}}]", vec![("$.tests[0].env", "all name should be not empty string, but contains bool")])]
+        #[case("when test env contains empty name", "tests: [{command: [echo], env: {'': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]
+        #[case("when test env contains empty name", "tests: [{command: [echo], env: {'1MESSAGE': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]
         #[case("when test status matcher is not map", "tests: [{command: [echo], expect: {status: 42}}]", vec![("$.tests[0].expect.status", "should be map, but is uint")])]
         #[case("when test stdout matcher is not map", "tests: [{command: [echo], expect: {stdout: 42}}]", vec![("$.tests[0].expect.stdout", "should be map, but is uint")])]
         #[case("when test stderr matcher is not map", "tests: [{command: [echo], expect: {stderr: 42}}]", vec![("$.tests[0].expect.stderr", "should be map, but is uint")])]
