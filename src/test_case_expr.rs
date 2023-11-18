@@ -51,7 +51,7 @@ pub fn eval_test_expr(
             .clone()
             .into_iter()
             .enumerate()
-            .filter_map(|(i, x)| match eval_expr(x) {
+            .filter_map(|(i, x)| match eval_expr(&x) {
                 Ok(value) => v.in_index(i, |v| v.must_be_string(&value)),
                 Err(message) => {
                     v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
@@ -66,7 +66,7 @@ pub fn eval_test_expr(
             .env
             .iter()
             .filter_map(|(name, expr)| {
-                match eval_expr(expr.clone()) {
+                match eval_expr(&expr) {
                     Ok(value) => v.in_field(name, |v| v.must_be_string(&value)),
                     Err(message) => {
                         v.in_field(name, |v| {

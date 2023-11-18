@@ -6,12 +6,12 @@ pub enum Expr {
     EnvVar(String, Option<String>),
 }
 
-pub fn eval_expr(expr: Expr) -> Result<Value, String> {
+pub fn eval_expr(expr: &Expr) -> Result<Value, String> {
     match expr {
-        Expr::Literal(v) => Ok(v),
+        Expr::Literal(v) => Ok(v.clone()),
         Expr::EnvVar(name, default) => std::env::var_os(name.clone())
             .map(|value| Value::from(value.to_string_lossy()))
-            .or_else(|| default.map(Value::from))
+            .or_else(|| default.clone().map(Value::from))
             .ok_or_else(|| format!("env var {} is not defined", name)),
     }
 }
@@ -54,7 +54,7 @@ mod tests {
     ) {
         set_var(ENV_VAR_NAME, ENV_VAR_VALUE);
 
-        let actual = eval_expr(expr);
+        let actual = eval_expr(&expr);
         assert_eq!(actual, expected, "{}", title);
     }
 }
