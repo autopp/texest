@@ -83,6 +83,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                             path: v.current_path(),
                             command,
                             stdin,
+                            env: vec![],
                             timeout: Duration::from_secs(timeout),
                             tee_stdout,
                             tee_stderr,

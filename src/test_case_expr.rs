@@ -20,6 +20,7 @@ pub struct TestCaseExpr {
     pub path: String,
     pub command: Vec<Expr>,
     pub stdin: String,
+    pub env: Vec<(String, Expr)>,
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
@@ -56,6 +57,25 @@ pub fn eval_test_expr(
                     v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
                     None
                 }
+            })
+            .collect()
+    });
+
+    let env: Vec<(String, String)> = v.in_field("env", |v| {
+        test_case_expr
+            .env
+            .iter()
+            .filter_map(|(name, expr)| {
+                match eval_expr(expr.clone()) {
+                    Ok(value) => v.in_field(name, |v| v.must_be_string(&value)),
+                    Err(message) => {
+                        v.in_field(name, |v| {
+                            v.add_violation(format!("eval error: {}", message))
+                        });
+                        None
+                    }
+                }
+                .map(|value| (name.clone(), value))
             })
             .collect()
     });
@@ -99,7 +119,7 @@ pub fn eval_test_expr(
             path: test_case_expr.path.clone(),
             command,
             stdin: test_case_expr.stdin.clone(),
-            env: vec![],
+            env,
             timeout: test_case_expr.timeout,
             tee_stdout: test_case_expr.tee_stdout,
             tee_stderr: test_case_expr.tee_stderr,
@@ -131,6 +151,7 @@ pub mod testutil {
         pub path: &'static str,
         pub command: Vec<Expr>,
         pub stdin: &'static str,
+        pub env: Vec<(&'static str, Expr)>,
         pub timeout: u64,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
@@ -153,6 +174,11 @@ pub mod testutil {
                 path: self.path.to_string(),
                 command: self.command.clone(),
                 stdin: self.stdin.to_string(),
+                env: self
+                    .env
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
                 timeout: Duration::from_secs(self.timeout),
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
@@ -170,6 +196,7 @@ pub mod testutil {
                 path: TestCaseExprTemplate::DEFAULT_PATH,
                 command: TestCaseExprTemplate::default_command(),
                 stdin: "",
+                env: vec![],
                 timeout: 10,
                 tee_stdout: false,
                 tee_stderr: false,
@@ -221,6 +248,48 @@ mod tests {
             stdout_matchers: vec![],
             stderr_matchers: vec![],
         }])]
+        #[case("with stdin case",
+            TestCaseExprTemplate {
+                stdin: "hello",
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    stdin: "hello".to_string(),
+                    env: vec![],
+                    timeout: Duration::from_secs(10),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                    status_matchers: vec![],
+                    stdout_matchers: vec![],
+                    stderr_matchers: vec![],
+                },
+            ]
+        )]
+        #[case("with env case",
+            TestCaseExprTemplate {
+                env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", literal_expr("world"))],
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    stdin: "".to_string(),
+                    env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
+                    timeout: Duration::from_secs(10),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                    status_matchers: vec![],
+                    stdout_matchers: vec![],
+                    stderr_matchers: vec![],
+                },
+            ]
+        )]
         #[case("with status matcher case",
             TestCaseExprTemplate {
                 status_matchers: mapping(vec![
@@ -312,6 +381,16 @@ mod tests {
             vec![
                 violation(".command[0]", "should be string, but is bool"),
                 violation(".command[1]", "eval error: env var _undefined is not defined"),
+            ]
+        )]
+        #[case("with eval error in env",
+            TestCaseExprTemplate {
+                env: vec![("MESSAGE1", literal_expr(true)), ("MESSAGE2", env_var_expr("_undefined"))],
+                ..Default::default()
+            },
+            vec![
+                violation(".env.MESSAGE1", "should be string, but is bool"),
+                violation(".env.MESSAGE2", "eval error: env var _undefined is not defined"),
             ]
         )]
         #[case("with undefined status matcher",
