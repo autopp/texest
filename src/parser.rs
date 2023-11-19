@@ -55,7 +55,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
             v.must_have_seq(root, "tests", |v, tests| {
                 v.map_seq(tests, |v, test| {
                     v.must_be_map(test).and_then(|test| {
-                        let stdin = v.may_have_string(test, "stdin").unwrap_or_default();
+                        let stdin = v.may_have(test, "stdin", parse_expr).unwrap_or(Expr::Literal(Value::from("")));
                         let timeout = v.may_have_uint(test, "timeout").unwrap_or(DEFAULT_TIMEOUT);
                         let tee_stdout = v.may_have_bool(test, "teeStdout").unwrap_or(false);
                         let tee_stderr = v.may_have_bool(test, "teeStderr").unwrap_or(false);
@@ -233,13 +233,13 @@ tests:
             tee_stderr: true,
             ..Default::default()
         }])]
-        #[case("with command contains stdin", "
+        #[case("with command contains simple stdin", "
 tests:
     - command:
         - cat
       stdin: hello", vec![TestCaseExprTemplate {
             command: vec![Expr::Literal(Value::from("cat".to_string()))],
-            stdin: "hello",
+            stdin: literal_expr("hello"),
             ..Default::default()
         }])]
         #[case("with command contains env", "

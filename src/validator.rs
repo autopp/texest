@@ -129,6 +129,16 @@ impl Validator {
         })
     }
 
+    pub fn may_have<'a, T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &'a Value) -> T>(
+        &mut self,
+        m: &'a Mapping,
+        field: S,
+        mut f: F,
+    ) -> Option<T> {
+        m.get(&Value::String(field.as_ref().to_string()))
+            .map(|x| self.in_field(field, |v| f(v, x)))
+    }
+
     pub fn may_have_map<'a, T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &'a Mapping) -> T>(
         &mut self,
         m: &'a Mapping,
@@ -643,6 +653,46 @@ mod tests {
 
             assert_eq!(actual, None);
             assert_eq!(v.violations, vec![]);
+        }
+    }
+
+    mod may_have {
+        use super::*;
+
+        #[test]
+        fn when_map_contains_value_calls_callback_and_return_it() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let mut m = Mapping::new();
+            m.insert(Value::String("field".to_string()), Value::from(true));
+
+            let actual = v.may_have(&m, "field", |v, x| {
+                assert_eq!(Value::from(true), *x);
+                v.add_violation("error");
+                42
+            });
+
+            assert_eq!(actual, Some(42));
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "error".to_string(),
+                }]
+            )
+        }
+
+        #[test]
+        fn when_map_dosent_contain_map_do_nothing() {
+            let mut v = Validator::new(FILENAME.to_string());
+            let m = Mapping::new();
+
+            let actual = v.may_have(&m, "field", |v, _| {
+                v.add_violation("error");
+            });
+
+            assert_eq!(actual, None);
+            assert_eq!(v.violations, vec![])
         }
     }
 
