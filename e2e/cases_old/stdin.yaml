@@ -1,0 +1,42 @@
+tests:
+  - name: 'simple stdin'
+    command:
+      - type: env
+        name: TEXEST
+      - "-"
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - cat
+            stdin: "hello"
+            expect:
+              stdout:
+                eq: "hello"
+    expect:
+      status:
+        eq: 0
+  - name: 'complex stdin'
+    command:
+      - type: env
+        name: TEXEST
+      - "-"
+    stdin:
+      format: yaml
+      value:
+        tests:
+          - command:
+              - cat
+            stdin:
+              $yaml:
+                answer: 42
+                question: "What is the answer to life, the universe and everything?"
+            expect:
+              stdout:
+                eq: |
+                  answer: 42
+                  question: What is the answer to life, the universe and everything?
+    expect:
+      status:
+        eq: 0
