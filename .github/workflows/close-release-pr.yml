@@ -20,7 +20,6 @@ jobs:
           TAG="v${VERSION}"
           echo target version is ${TAG}
 
-          RELEASE=$(hub release --include-drafts -f "%T:%S%n" | grep -e "^${TAG//./\\.}:")
           if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${VERSION}\")") = false ]; then
             echo "Release ${TAG} is not found"
             exit 1
