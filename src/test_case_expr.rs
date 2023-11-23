@@ -76,7 +76,7 @@ pub fn eval_test_expr(
             .env
             .iter()
             .filter_map(|(name, expr)| {
-                match eval_expr(&expr) {
+                match eval_expr(expr) {
                     Ok(value) => v.in_field(name, |v| v.must_be_string(&value)),
                     Err(message) => {
                         v.in_field(name, |v| {

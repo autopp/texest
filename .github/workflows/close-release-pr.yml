@@ -21,19 +21,18 @@ jobs:
           echo target version is ${TAG}
 
           RELEASE=$(hub release --include-drafts -f "%T:%S%n" | grep -e "^${TAG//./\\.}:")
-          if [ -z "${RELEASE}" ]; then
+          if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${VERSION}\")") = false ]; then
             echo "Release ${TAG} is not found"
             exit 1
           fi
-          STATE=$(echo "${RELEASE}" | cut -d : -f 2)
-          if [ "${STATE}" != draft ]; then
+          if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${VERSION}\" and .draft == false)") = true ]; then
             echo "Release ${TAG} is already published"
             exit 0
           fi
 
           if [ "${{ github.event.pull_request.merged }}" = true ]; then
             echo "Publish ${TAG} from draft"
-            hub release edit --draft=false -m "" "${TAG}"
+            gh release edit "${TAG}"
           else
             echo "Delete ${TAG}"
             gh release delete "${TAG}"
