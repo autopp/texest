@@ -1,12 +1,10 @@
 tests:
   - name: 'simple stdin'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - "-"
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - cat
@@ -19,12 +17,10 @@ tests:
         eq: 0
   - name: 'complex stdin'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - "-"
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - cat

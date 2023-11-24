@@ -1,12 +1,10 @@
 tests:
   - name: 'status eq matcher with matched status'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - '-'
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - 'false'
@@ -18,12 +16,10 @@ tests:
         eq: 0
   - name: 'status eq matcher with wrong status'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - '-'
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - 'false'

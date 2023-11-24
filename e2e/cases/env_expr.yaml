@@ -1,15 +1,11 @@
 tests:
-  - name: 'status eq matcher with matched status'
-    command:
-      - type: env
-        name: TEXEST
+  - command:
+      - $env: TEXEST
       - '-'
     env:
-      - name: MESSAGE
-        value: hello
+      MESSAGE: hello
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - echo

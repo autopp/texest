@@ -1,12 +1,10 @@
 tests:
   - name: 'stream eq matcher with matched output'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - '-'
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - echo
@@ -19,12 +17,10 @@ tests:
         eq: 0
   - name: 'stream eq matcher with wrong output'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - '-'
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - echo

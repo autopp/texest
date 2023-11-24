@@ -1,12 +1,10 @@
 tests:
   - name: 'with timeouted command'
     command:
-      - type: env
-        name: TEXEST
+      - $env: TEXEST
       - "-"
     stdin:
-      format: yaml
-      value:
+      $yaml:
         tests:
           - command:
               - 'sleep'
