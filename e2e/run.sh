@@ -4,12 +4,12 @@ set -eu
 
 my_dir=$(cd $(dirname $0); pwd)
 target_cmd=${E2E_TARGET:-${my_dir}/../target/debug/texest}
-tester_cmd="${E2E_TESTER:-spexec}"
+tester_cmd="${E2E_TESTER:-texest}"
 
 have_error=no
-for file in $my_dir/cases_old/*.yaml; do
+for file in $my_dir/cases/*.yaml; do
   echo $(basename ${file})
-  TEXEST="${target_cmd}" "${tester_cmd}" --strict "${file}" || have_error=yes
+  TEXEST="${target_cmd}" "${tester_cmd}" "${file}" || have_error=yes
   echo
 done
 

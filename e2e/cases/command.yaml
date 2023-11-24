@@ -1,0 +1,26 @@
+tests:
+  - command:
+      - $env: TEXEST
+      - "-"
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - 'true'
+    expect:
+      status:
+        eq: 0
+      stderr:
+        eq: ""
+  - command:
+      - $env: TEXEST
+      - "-"
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - cat
+            stdin: 'hello'
+    expect:
+      status:
+        eq: 0
