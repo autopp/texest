@@ -50,6 +50,7 @@ pub type StreamMatcherRegistry = MatcherRegistry<OsString>;
 pub fn new_stream_matcher_registry() -> StreamMatcherRegistry {
     let mut r = StreamMatcherRegistry::new("stream".to_string());
     r.register("eq".to_string(), stream::parse_eq_matcher);
+    r.register("contain".to_string(), stream::parse_contain_matcher);
     r
 }
 
