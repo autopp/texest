@@ -26,24 +26,29 @@ pub struct TestCaseFile<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct AssertionResult {
+    status: Vec<String>,
+    stdout: Vec<String>,
+    stderr: Vec<String>,
+}
+
+impl AssertionResult {
+    pub fn is_passed(&self) -> bool {
+        self.status.is_empty() && self.stdout.is_empty() && self.stderr.is_empty()
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum TestResult {
-    Asserted {
-        status: Vec<String>,
-        stdout: Vec<String>,
-        stderr: Vec<String>,
-    },
+    Asserted(AssertionResult),
     ExecError(String),
 }
 
 impl TestResult {
     pub fn is_passed(&self) -> bool {
         match self {
-            TestResult::Asserted {
-                status,
-                stdout,
-                stderr,
-            } => status.is_empty() && stdout.is_empty() && stderr.is_empty(),
-            TestResult::ExecError(_) => false,
+            TestResult::Asserted(assertion_result) => assertion_result.is_passed(),
+            _ => false,
         }
     }
 }
@@ -161,11 +166,11 @@ impl TestCase {
             })
             .collect::<Vec<_>>();
 
-        TestResult::Asserted {
+        TestResult::Asserted(AssertionResult {
             status,
             stdout,
             stderr,
-        }
+        })
     }
 }
 
@@ -209,37 +214,37 @@ mod tests {
         #[rstest]
         #[case("command is exit, no matchers",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] } )]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] } ))]
         #[case("command is exit, status matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
         #[case("command is exit, status matchers are failed",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted { status: vec![TestMatcher::failure_message(0)], stdout: vec![], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![TestMatcher::failure_message(0)], stdout: vec![], stderr: vec![] }))]
         #[case("command is exit, stdout matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
         #[case("command is exit, stdout matchers are failed",
             given_test_case(vec!["echo", "-n", "hello"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![TestMatcher::failure_message("hello")], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello")], stderr: vec![] }))]
         #[case("command is exit, stdout matchers are failed, stdin is given",
             given_test_case(vec!["cat"], "hello world", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![TestMatcher::failure_message("hello world")], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello world")], stderr: vec![] }))]
         #[case("command is exit, stdout matchers are failed, env is given",
             given_test_case(vec!["printenv", "MESSAGE"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![TestMatcher::failure_message("hello\n")], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello\n")], stderr: vec![] }))]
         #[case("command is exit, stderr matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
         #[case("command is exit, stderr matchers are failed",
             given_test_case(vec!["bash", "-c", "echo -n hi >&2"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![TestMatcher::failure_message("hi")] })]
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![TestMatcher::failure_message("hi")] }))]
         #[case("command is signaled",
             given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted { status: vec!["signaled with 15".to_string()], stdout: vec![], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec!["signaled with 15".to_string()], stdout: vec![], stderr: vec![] }))]
         #[case("command is timed out",
             given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted { status: vec!["timed out".to_string()], stdout: vec![], stderr: vec![] })]
+            TestResult::Asserted(AssertionResult{ status: vec!["timed out".to_string()], stdout: vec![], stderr: vec![] }))]
         fn when_exec_succeeded(
             #[case] title: &str,
             #[case] given: TestCase,
