@@ -27,9 +27,9 @@ pub struct TestCaseFile<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AssertionResult {
-    status: Vec<String>,
-    stdout: Vec<String>,
-    stderr: Vec<String>,
+    pub status: Vec<String>,
+    pub stdout: Vec<String>,
+    pub stderr: Vec<String>,
 }
 
 impl AssertionResult {
