@@ -1,3 +1,5 @@
+use crate::test_case::TestResultSummary;
+
 use super::Formatter;
 
 pub struct SimpleReporter {}
@@ -38,18 +40,15 @@ impl Formatter for SimpleReporter {
         &mut self,
         w: &mut Box<dyn std::io::Write>,
         _cm: &super::ColorMarker,
-        test_results: Vec<crate::test_case::TestResult>,
+        summary: &TestResultSummary,
     ) -> Result<(), String> {
-        let failed_count = test_results
-            .iter()
-            .filter(|test_result| !test_result.is_passed())
-            .count();
+        let (_, _, failed) = summary.classified_results();
 
         write!(
             w,
             "\n{} test cases, {} failures\n",
-            test_results.len(),
-            failed_count
+            summary.len(),
+            failed.len()
         )
         .map_err(|err| err.to_string())
     }
