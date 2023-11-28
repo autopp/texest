@@ -1,3 +1,5 @@
+use crate::test_case::TestResultSummary;
+
 use super::Formatter;
 
 pub struct SimpleReporter {}
@@ -38,18 +40,33 @@ impl Formatter for SimpleReporter {
         &mut self,
         w: &mut Box<dyn std::io::Write>,
         _cm: &super::ColorMarker,
-        test_results: Vec<crate::test_case::TestResult>,
+        summary: &TestResultSummary,
     ) -> Result<(), String> {
-        let failed_count = test_results
-            .iter()
-            .filter(|test_result| !test_result.is_passed())
-            .count();
+        let (_, failed, _) = summary.classified_results();
+
+        if !failed.is_empty() {
+            writeln!(w, "\nFailures:").map_err(|err| err.to_string())?;
+            failed.iter().enumerate().try_for_each(|(i, ar)| {
+                writeln!(w, "\n{})", i + 1)
+                    .map_err(|err| err.to_string())
+                    .unwrap();
+                ar.status.iter().try_for_each(|m| {
+                    writeln!(w, "  status: {}", m).map_err(|err| err.to_string())
+                })?;
+                ar.stdout.iter().try_for_each(|m| {
+                    writeln!(w, "  stdout: {}", m).map_err(|err| err.to_string())
+                })?;
+                ar.stderr
+                    .iter()
+                    .try_for_each(|m| writeln!(w, "  stderr: {}", m).map_err(|err| err.to_string()))
+            })?;
+        }
 
         write!(
             w,
             "\n{} test cases, {} failures\n",
-            test_results.len(),
-            failed_count
+            summary.len(),
+            failed.len()
         )
         .map_err(|err| err.to_string())
     }

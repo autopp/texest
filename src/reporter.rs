@@ -2,7 +2,7 @@ mod simple_formatter;
 
 use std::io::Write;
 
-use crate::test_case::{TestCase, TestResult};
+use crate::test_case::{TestCase, TestResult, TestResultSummary};
 
 pub enum Color {
     #[allow(dead_code)]
@@ -56,7 +56,7 @@ pub trait Formatter {
         &mut self,
         w: &mut Box<dyn Write>,
         cm: &ColorMarker,
-        test_results: Vec<TestResult>,
+        summary: &TestResultSummary,
     ) -> Result<(), String>;
 }
 
@@ -160,9 +160,9 @@ impl<'a, 'b> Reporter<'a, 'b> {
         self.formatter.on_test_case_end(self.w, &cm, test_result)
     }
 
-    pub fn on_run_end(&mut self, test_results: Vec<TestResult>) -> Result<(), String> {
+    pub fn on_run_end(&mut self, summary: &TestResultSummary) -> Result<(), String> {
         let cm = ColorMarker::new(self.use_color);
-        self.formatter.on_run_end(self.w, &cm, test_results)
+        self.formatter.on_run_end(self.w, &cm, summary)
     }
 }
 

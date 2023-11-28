@@ -26,25 +26,69 @@ pub struct TestCaseFile<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct AssertionResult {
+    pub status: Vec<String>,
+    pub stdout: Vec<String>,
+    pub stderr: Vec<String>,
+}
+
+impl AssertionResult {
+    pub fn is_passed(&self) -> bool {
+        self.status.is_empty() && self.stdout.is_empty() && self.stderr.is_empty()
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum TestResult {
-    Asserted {
-        status: Vec<String>,
-        stdout: Vec<String>,
-        stderr: Vec<String>,
-    },
+    Asserted(AssertionResult),
     ExecError(String),
 }
 
 impl TestResult {
     pub fn is_passed(&self) -> bool {
         match self {
-            TestResult::Asserted {
-                status,
-                stdout,
-                stderr,
-            } => status.is_empty() && stdout.is_empty() && stderr.is_empty(),
-            TestResult::ExecError(_) => false,
+            TestResult::Asserted(assertion_result) => assertion_result.is_passed(),
+            _ => false,
         }
+    }
+}
+
+pub struct TestResultSummary {
+    pub results: Vec<TestResult>,
+}
+
+impl TestResultSummary {
+    pub fn len(&self) -> usize {
+        self.results.len()
+    }
+
+    pub fn classified_results(
+        &self,
+    ) -> (Vec<&AssertionResult>, Vec<&AssertionResult>, Vec<&String>) {
+        let mut passed = vec![];
+        let mut failed = vec![];
+        let mut errors = vec![];
+
+        for result in &self.results {
+            match result {
+                TestResult::Asserted(assertion_result) => {
+                    if assertion_result.is_passed() {
+                        passed.push(assertion_result);
+                    } else {
+                        failed.push(assertion_result);
+                    }
+                }
+                TestResult::ExecError(message) => {
+                    errors.push(message);
+                }
+            }
+        }
+
+        (passed, failed, errors)
+    }
+
+    pub fn is_all_passed(&self) -> bool {
+        self.results.iter().all(|result| result.is_passed())
     }
 }
 
@@ -161,108 +205,193 @@ impl TestCase {
             })
             .collect::<Vec<_>>();
 
-        TestResult::Asserted {
+        TestResult::Asserted(AssertionResult {
             status,
             stdout,
             stderr,
-        }
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::matcher::testutil::*;
 
-    mod run {
+    mod test_case {
         use super::*;
-        use rstest::rstest;
-        use serde_yaml::Value;
+        use crate::matcher::testutil::*;
 
-        const DEFAULT_FILENAME: &str = "test.yaml";
-        const DEFAULT_PATH: &str = "$.tests[0]";
-        const DEFAULT_TIMEOUT: u64 = 10;
+        mod run {
+            use super::*;
+            use rstest::rstest;
+            use serde_yaml::Value;
 
-        pub fn given_test_case(
-            command: Vec<&str>,
-            stdin: &str,
-            timeout: u64,
-            status_matchers: Vec<Box<dyn Matcher<i32>>>,
-            stdout_matchers: Vec<Box<dyn Matcher<OsString>>>,
-            stderr_matchers: Vec<Box<dyn Matcher<OsString>>>,
-        ) -> TestCase {
-            TestCase {
-                filename: DEFAULT_FILENAME.to_string(),
-                path: DEFAULT_PATH.to_string(),
-                command: command.iter().map(|x| x.to_string()).collect(),
-                stdin: stdin.to_string(),
-                env: vec![("MESSAGE".to_string(), "hello".to_string())],
-                timeout: Duration::from_secs(timeout),
-                tee_stdout: false,
-                tee_stderr: false,
-                status_matchers,
-                stdout_matchers,
-                stderr_matchers,
+            const DEFAULT_FILENAME: &str = "test.yaml";
+            const DEFAULT_PATH: &str = "$.tests[0]";
+            const DEFAULT_TIMEOUT: u64 = 10;
+
+            pub fn given_test_case(
+                command: Vec<&str>,
+                stdin: &str,
+                timeout: u64,
+                status_matchers: Vec<Box<dyn Matcher<i32>>>,
+                stdout_matchers: Vec<Box<dyn Matcher<OsString>>>,
+                stderr_matchers: Vec<Box<dyn Matcher<OsString>>>,
+            ) -> TestCase {
+                TestCase {
+                    filename: DEFAULT_FILENAME.to_string(),
+                    path: DEFAULT_PATH.to_string(),
+                    command: command.iter().map(|x| x.to_string()).collect(),
+                    stdin: stdin.to_string(),
+                    env: vec![("MESSAGE".to_string(), "hello".to_string())],
+                    timeout: Duration::from_secs(timeout),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                    status_matchers,
+                    stdout_matchers,
+                    stderr_matchers,
+                }
             }
+
+            #[rstest]
+            #[case("command is exit, no matchers",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] } ))]
+            #[case("command is exit, status matchers are succeeded",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
+            #[case("command is exit, status matchers are failed",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec![TestMatcher::failure_message(0)], stdout: vec![], stderr: vec![] }))]
+            #[case("command is exit, stdout matchers are succeeded",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
+            #[case("command is exit, stdout matchers are failed",
+            given_test_case(vec!["echo", "-n", "hello"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello")], stderr: vec![] }))]
+            #[case("command is exit, stdout matchers are failed, stdin is given",
+            given_test_case(vec!["cat"], "hello world", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello world")], stderr: vec![] }))]
+            #[case("command is exit, stdout matchers are failed, env is given",
+            given_test_case(vec!["printenv", "MESSAGE"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello\n")], stderr: vec![] }))]
+            #[case("command is exit, stderr matchers are succeeded",
+            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
+            #[case("command is exit, stderr matchers are failed",
+            given_test_case(vec!["bash", "-c", "echo -n hi >&2"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
+            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![TestMatcher::failure_message("hi")] }))]
+            #[case("command is signaled",
+            given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec!["signaled with 15".to_string()], stdout: vec![], stderr: vec![] }))]
+            #[case("command is timed out",
+            given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
+            TestResult::Asserted(AssertionResult{ status: vec!["timed out".to_string()], stdout: vec![], stderr: vec![] }))]
+            fn when_exec_succeeded(
+                #[case] title: &str,
+                #[case] given: TestCase,
+                #[case] expeceted: TestResult,
+            ) {
+                let actual = given.run();
+                assert_eq!(actual, expeceted, "{}", title);
+            }
+
+            #[test]
+            fn when_exec_failed() {
+                let given = given_test_case(
+                    vec!["_unknown"],
+                    "",
+                    DEFAULT_TIMEOUT,
+                    vec![],
+                    vec![],
+                    vec![],
+                );
+
+                let actual = given.run();
+
+                assert!(matches!(actual, TestResult::ExecError(_)));
+            }
+        }
+    }
+
+    mod test_result_summary {
+        use super::*;
+        use once_cell::sync::Lazy;
+        use rstest::rstest;
+
+        #[rstest]
+        #[case(vec![], 0)]
+        #[case(vec![TestResult::Asserted(AssertionResult {
+            status: vec![],
+            stdout: vec![],
+            stderr: vec![],
+        })], 1)]
+        #[case(vec![TestResult::ExecError("".to_string())], 1)]
+        #[case(vec![
+            TestResult::Asserted(AssertionResult {
+                status: vec![],
+                stdout: vec![],
+                stderr: vec![],
+            }),
+            TestResult::ExecError("".to_string()),
+        ], 2)]
+        fn len(#[case] results: Vec<TestResult>, #[case] expected: usize) {
+            let summary = TestResultSummary { results };
+
+            assert_eq!(summary.len(), expected);
+        }
+
+        static PASSED1: AssertionResult = AssertionResult {
+            status: vec![],
+            stdout: vec![],
+            stderr: vec![],
+        };
+        static PASSED2: AssertionResult = AssertionResult {
+            status: vec![],
+            stdout: vec![],
+            stderr: vec![],
+        };
+        static FAILURE1: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
+            status: vec!["status failure".to_string()],
+            stdout: vec![],
+            stderr: vec![],
+        });
+        static FAILURE2: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
+            status: vec![],
+            stdout: vec!["stdout failure".to_string()],
+            stderr: vec![],
+        });
+        static ERROR1: Lazy<String> = Lazy::new(|| "error1".to_string());
+        static ERROR2: Lazy<String> = Lazy::new(|| "error2".to_string());
+
+        #[rstest]
+        #[case(
+            vec![],
+            (vec![], vec![], vec![]),
+        )]
+        #[case(
+            vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(FAILURE1.clone()), TestResult::ExecError(ERROR1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::Asserted(FAILURE2.clone()), TestResult::ExecError(ERROR2.clone())],
+            (vec![&PASSED1, &PASSED2], vec![&*FAILURE1, &*FAILURE2], vec![&*ERROR1, &*ERROR2]),
+        )]
+        fn classified_results(
+            #[case] results: Vec<TestResult>,
+            #[case] expected: (Vec<&AssertionResult>, Vec<&AssertionResult>, Vec<&String>),
+        ) {
+            let summary = TestResultSummary { results };
+            let actual = summary.classified_results();
+
+            assert_eq!(actual, expected);
         }
 
         #[rstest]
-        #[case("command is exit, no matchers",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] } )]
-        #[case("command is exit, status matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
-        #[case("command is exit, status matchers are failed",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted { status: vec![TestMatcher::failure_message(0)], stdout: vec![], stderr: vec![] })]
-        #[case("command is exit, stdout matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
-        #[case("command is exit, stdout matchers are failed",
-            given_test_case(vec!["echo", "-n", "hello"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![TestMatcher::failure_message("hello")], stderr: vec![] })]
-        #[case("command is exit, stdout matchers are failed, stdin is given",
-            given_test_case(vec!["cat"], "hello world", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![TestMatcher::failure_message("hello world")], stderr: vec![] })]
-        #[case("command is exit, stdout matchers are failed, env is given",
-            given_test_case(vec!["printenv", "MESSAGE"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted { status: vec![], stdout: vec![TestMatcher::failure_message("hello\n")], stderr: vec![] })]
-        #[case("command is exit, stderr matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![] })]
-        #[case("command is exit, stderr matchers are failed",
-            given_test_case(vec!["bash", "-c", "echo -n hi >&2"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted { status: vec![], stdout: vec![], stderr: vec![TestMatcher::failure_message("hi")] })]
-        #[case("command is signaled",
-            given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted { status: vec!["signaled with 15".to_string()], stdout: vec![], stderr: vec![] })]
-        #[case("command is timed out",
-            given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted { status: vec!["timed out".to_string()], stdout: vec![], stderr: vec![] })]
-        fn when_exec_succeeded(
-            #[case] title: &str,
-            #[case] given: TestCase,
-            #[case] expeceted: TestResult,
-        ) {
-            let actual = given.run();
-            assert_eq!(actual, expeceted, "{}", title);
-        }
+        #[case(vec![], true)]
+        #[case(vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(PASSED2.clone())], true)]
+        #[case(vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::Asserted(FAILURE1.clone())], false)]
+        #[case(vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::ExecError(ERROR1.clone())], false)]
+        fn is_all_passed(#[case] results: Vec<TestResult>, #[case] expected: bool) {
+            let summary = TestResultSummary { results };
 
-        #[test]
-        fn when_exec_failed() {
-            let given = given_test_case(
-                vec!["_unknown"],
-                "",
-                DEFAULT_TIMEOUT,
-                vec![],
-                vec![],
-                vec![],
-            );
-
-            let actual = given.run();
-
-            assert!(matches!(actual, TestResult::ExecError(_)));
+            assert_eq!(summary.is_all_passed(), expected);
         }
     }
 }

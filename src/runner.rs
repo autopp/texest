@@ -1,12 +1,12 @@
 use crate::{
     reporter::Reporter,
-    test_case::{TestCaseFile, TestResult},
+    test_case::{TestCaseFile, TestResult, TestResultSummary},
 };
 
 pub fn run_tests(
     test_case_files: Vec<TestCaseFile>,
     reporter: &mut Reporter,
-) -> Result<Vec<TestResult>, String> {
+) -> Result<TestResultSummary, String> {
     reporter.on_run_start()?;
     let test_results = test_case_files
         .into_iter()
@@ -19,7 +19,11 @@ pub fn run_tests(
         })
         .collect::<Result<Vec<TestResult>, String>>()?;
 
-    reporter.on_run_end(test_results.clone())?;
+    let summary = TestResultSummary {
+        results: test_results,
+    };
 
-    Ok(test_results)
+    reporter.on_run_end(&summary)?;
+
+    Ok(summary)
 }

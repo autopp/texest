@@ -154,14 +154,14 @@ fn main() {
     let mut f: Box<dyn Formatter> = Box::new(reporter::SimpleReporter {});
     let mut r = Reporter::new(&mut w, use_color, &mut f);
 
-    let results = run_tests(test_case_files, &mut r);
+    let result = run_tests(test_case_files, &mut r);
 
-    if let Err(err) = results {
+    if let Err(err) = result {
         eprintln!("internal error: {}", err);
         std::process::exit(EXIT_CODE_INTERNAL_ERROR);
     }
 
-    if !results.unwrap().iter().all(TestResult::is_passed) {
+    if !result.unwrap().is_all_passed() {
         std::process::exit(EXIT_CODE_TEST_FAILED)
     }
 }
