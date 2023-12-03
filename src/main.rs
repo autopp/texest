@@ -20,7 +20,7 @@ use clap::{Parser, ValueEnum};
 
 use reporter::{Formatter, Reporter};
 use runner::run_tests;
-use test_case::{TestCaseFile, TestResult};
+use test_case::TestCaseFile;
 use test_case_expr::eval_test_expr;
 
 use crate::parser::parse;

@@ -50,15 +50,12 @@ impl Formatter for SimpleReporter {
                 writeln!(w, "\n{})", i + 1)
                     .map_err(|err| err.to_string())
                     .unwrap();
-                ar.status.iter().try_for_each(|m| {
-                    writeln!(w, "  status: {}", m).map_err(|err| err.to_string())
-                })?;
-                ar.stdout.iter().try_for_each(|m| {
-                    writeln!(w, "  stdout: {}", m).map_err(|err| err.to_string())
-                })?;
-                ar.stderr
-                    .iter()
-                    .try_for_each(|m| writeln!(w, "  stderr: {}", m).map_err(|err| err.to_string()))
+                ar.failures.iter().try_for_each(|(name, messages)| {
+                    messages
+                        .iter()
+                        .try_for_each(|m| writeln!(w, "  {}: {}", name, m))
+                        .map_err(|err| err.to_string())
+                })
             })?;
         }
 

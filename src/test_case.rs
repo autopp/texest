@@ -1,5 +1,7 @@
 use std::{ffi::OsString, fmt::Debug, time::Duration};
 
+use indexmap::{indexmap, IndexMap};
+
 use crate::{
     exec::{execute_command, Status},
     matcher::Matcher,
@@ -27,14 +29,14 @@ pub struct TestCaseFile<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AssertionResult {
-    pub status: Vec<String>,
-    pub stdout: Vec<String>,
-    pub stderr: Vec<String>,
+    pub failures: IndexMap<String, Vec<String>>,
 }
 
 impl AssertionResult {
     pub fn is_passed(&self) -> bool {
-        self.status.is_empty() && self.stdout.is_empty() && self.stderr.is_empty()
+        self.failures
+            .iter()
+            .all(|(_, messages)| messages.is_empty())
     }
 }
 
@@ -206,9 +208,11 @@ impl TestCase {
             .collect::<Vec<_>>();
 
         TestResult::Asserted(AssertionResult {
-            status,
-            stdout,
-            stderr,
+            failures: indexmap! {
+                "status".to_string() => status,
+                "stdout".to_string() => stdout,
+                "stderr".to_string() => stderr,
+            },
         })
     }
 }
@@ -216,6 +220,12 @@ impl TestCase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indexmap::indexmap;
+    use once_cell::sync::Lazy;
+
+    static STATUS_STRING: Lazy<String> = Lazy::new(|| "status".to_string());
+    static STDOUT_STRING: Lazy<String> = Lazy::new(|| "stdout".to_string());
+    static STDERR_STRING: Lazy<String> = Lazy::new(|| "stderr".to_string());
 
     mod test_case {
         use super::*;
@@ -256,37 +266,37 @@ mod tests {
             #[rstest]
             #[case("command is exit, no matchers",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] } ))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} } ))]
             #[case("command is exit, status matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, status matchers are failed",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec![TestMatcher::failure_message(0)], stdout: vec![], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, stdout matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, stdout matchers are failed",
             given_test_case(vec!["echo", "-n", "hello"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello")], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello")], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, stdout matchers are failed, stdin is given",
             given_test_case(vec!["cat"], "hello world", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello world")], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world")], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, stdout matchers are failed, env is given",
             given_test_case(vec!["printenv", "MESSAGE"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![TestMatcher::failure_message("hello\n")], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n")], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, stderr matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
             #[case("command is exit, stderr matchers are failed",
             given_test_case(vec!["bash", "-c", "echo -n hi >&2"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted(AssertionResult{ status: vec![], stdout: vec![], stderr: vec![TestMatcher::failure_message("hi")] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi")]} }))]
             #[case("command is signaled",
             given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec!["signaled with 15".to_string()], stdout: vec![], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]}  }))]
             #[case("command is timed out",
             given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ status: vec!["timed out".to_string()], stdout: vec![], stderr: vec![] }))]
+            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec!["timed out".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]}  }))]
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCase,
@@ -316,22 +326,27 @@ mod tests {
 
     mod test_result_summary {
         use super::*;
+        use indexmap::indexmap;
         use once_cell::sync::Lazy;
         use rstest::rstest;
 
         #[rstest]
         #[case(vec![], 0)]
-        #[case(vec![TestResult::Asserted(AssertionResult {
-            status: vec![],
-            stdout: vec![],
-            stderr: vec![],
+        #[case(vec![TestResult::Asserted(AssertionResult { failures:
+            indexmap!{
+                STATUS_STRING.clone() => vec![],
+                STDOUT_STRING.clone() => vec![],
+                STDERR_STRING.clone() => vec![],
+            }
         })], 1)]
         #[case(vec![TestResult::ExecError("".to_string())], 1)]
         #[case(vec![
             TestResult::Asserted(AssertionResult {
-                status: vec![],
-                stdout: vec![],
-                stderr: vec![],
+                failures: indexmap!{
+                    STATUS_STRING.clone() => vec![],
+                    STDOUT_STRING.clone() => vec![],
+                    STDERR_STRING.clone() => vec![],
+                }
             }),
             TestResult::ExecError("".to_string()),
         ], 2)]
@@ -341,25 +356,33 @@ mod tests {
             assert_eq!(summary.len(), expected);
         }
 
-        static PASSED1: AssertionResult = AssertionResult {
-            status: vec![],
-            stdout: vec![],
-            stderr: vec![],
-        };
-        static PASSED2: AssertionResult = AssertionResult {
-            status: vec![],
-            stdout: vec![],
-            stderr: vec![],
-        };
+        static PASSED1: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
+            failures: indexmap! {
+                STATUS_STRING.clone() => vec![],
+                STDOUT_STRING.clone() => vec![],
+                STDERR_STRING.clone() => vec![],
+            },
+        });
+        static PASSED2: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
+            failures: indexmap! {
+                STATUS_STRING.clone() => vec![],
+                STDOUT_STRING.clone() => vec![],
+                STDERR_STRING.clone() => vec![],
+            },
+        });
         static FAILURE1: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
-            status: vec!["status failure".to_string()],
-            stdout: vec![],
-            stderr: vec![],
+            failures: indexmap! {
+                STATUS_STRING.clone() => vec!["status failure".to_string()],
+                STDOUT_STRING.clone() => vec![],
+                STDERR_STRING.clone() => vec![],
+            },
         });
         static FAILURE2: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
-            status: vec![],
-            stdout: vec!["stdout failure".to_string()],
-            stderr: vec![],
+            failures: indexmap! {
+                STATUS_STRING.clone() => vec![],
+                STDOUT_STRING.clone() => vec!["stdout failure".to_string()],
+                STDERR_STRING.clone() => vec![],
+            },
         });
         static ERROR1: Lazy<String> = Lazy::new(|| "error1".to_string());
         static ERROR2: Lazy<String> = Lazy::new(|| "error2".to_string());
@@ -371,7 +394,7 @@ mod tests {
         )]
         #[case(
             vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(FAILURE1.clone()), TestResult::ExecError(ERROR1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::Asserted(FAILURE2.clone()), TestResult::ExecError(ERROR2.clone())],
-            (vec![&PASSED1, &PASSED2], vec![&*FAILURE1, &*FAILURE2], vec![&*ERROR1, &*ERROR2]),
+            (vec![&*PASSED1, &*PASSED2], vec![&*FAILURE1, &*FAILURE2], vec![&*ERROR1, &*ERROR2]),
         )]
         fn classified_results(
             #[case] results: Vec<TestResult>,
