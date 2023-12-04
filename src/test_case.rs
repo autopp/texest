@@ -9,6 +9,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct TestCase {
+    pub name: String,
     pub filename: String,
     pub path: String,
     pub command: Vec<String>,
@@ -96,7 +97,8 @@ impl TestResultSummary {
 
 impl PartialEq for TestCase {
     fn eq(&self, other: &Self) -> bool {
-        if self.filename != other.filename
+        if self.name != other.name
+            || self.filename != other.filename
             || self.path != other.path
             || self.command != other.command
             || self.stdin != other.stdin
@@ -236,6 +238,7 @@ mod tests {
             use rstest::rstest;
             use serde_yaml::Value;
 
+            const DEFAULT_NAME: &str = "test";
             const DEFAULT_FILENAME: &str = "test.yaml";
             const DEFAULT_PATH: &str = "$.tests[0]";
             const DEFAULT_TIMEOUT: u64 = 10;
@@ -249,6 +252,7 @@ mod tests {
                 stderr_matchers: Vec<Box<dyn Matcher<OsString>>>,
             ) -> TestCase {
                 TestCase {
+                    name: DEFAULT_NAME.to_string(),
                     filename: DEFAULT_FILENAME.to_string(),
                     path: DEFAULT_PATH.to_string(),
                     command: command.iter().map(|x| x.to_string()).collect(),

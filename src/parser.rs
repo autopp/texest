@@ -55,6 +55,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
             v.must_have_seq(root, "tests", |v, tests| {
                 v.map_seq(tests, |v, test| {
                     v.must_be_map(test).and_then(|test| {
+                        let name = v.may_have(test, "name", parse_expr);
                         let stdin = v.may_have(test, "stdin", parse_expr).unwrap_or(Expr::Literal(Value::from("")));
                         let timeout = v.may_have_uint(test, "timeout").unwrap_or(DEFAULT_TIMEOUT);
                         let tee_stdout = v.may_have_bool(test, "teeStdout").unwrap_or(false);
@@ -102,6 +103,7 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                         })
                         .flatten()
                         .map(|command| TestCaseExpr {
+                            name,
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             command,
@@ -200,6 +202,12 @@ tests:
     - command:
         - echo
         - hello", vec![TestCaseExprTemplate::default()])]
+        #[case("with name", "
+tests:
+    - name: mytest
+      command:
+        - echo
+        - hello", vec![TestCaseExprTemplate{name: Some(literal_expr("mytest")), ..TestCaseExprTemplate::default()}])]
         #[case("with command contains env var", "
 tests:
     - command:
