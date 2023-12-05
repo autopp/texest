@@ -42,15 +42,15 @@ impl AssertionResult {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum TestResult {
-    Asserted(AssertionResult),
-    ExecError(String),
+pub struct TestResult {
+    pub name: String,
+    pub result: Result<AssertionResult, String>,
 }
 
 impl TestResult {
     pub fn is_passed(&self) -> bool {
-        match self {
-            TestResult::Asserted(assertion_result) => assertion_result.is_passed(),
+        match &self.result {
+            Ok(assertion_result) => assertion_result.is_passed(),
             _ => false,
         }
     }
@@ -60,29 +60,33 @@ pub struct TestResultSummary {
     pub results: Vec<TestResult>,
 }
 
+type ClassifiedResults<'a> = (
+    Vec<(&'a String, &'a AssertionResult)>,
+    Vec<(&'a String, &'a AssertionResult)>,
+    Vec<(&'a String, &'a String)>,
+);
+
 impl TestResultSummary {
     pub fn len(&self) -> usize {
         self.results.len()
     }
 
-    pub fn classified_results(
-        &self,
-    ) -> (Vec<&AssertionResult>, Vec<&AssertionResult>, Vec<&String>) {
+    pub fn classified_results(&self) -> ClassifiedResults {
         let mut passed = vec![];
         let mut failed = vec![];
         let mut errors = vec![];
 
-        for result in &self.results {
-            match result {
-                TestResult::Asserted(assertion_result) => {
+        for tr in &self.results {
+            match &tr.result {
+                Ok(assertion_result) => {
                     if assertion_result.is_passed() {
-                        passed.push(assertion_result);
+                        passed.push((&tr.name, assertion_result));
                     } else {
-                        failed.push(assertion_result);
+                        failed.push((&tr.name, assertion_result));
                     }
                 }
-                TestResult::ExecError(message) => {
-                    errors.push(message);
+                Err(message) => {
+                    errors.push((&tr.name, message));
                 }
             }
         }
@@ -143,7 +147,10 @@ impl TestCase {
             });
 
         if let Err(err) = exec_result {
-            return TestResult::ExecError(err);
+            return TestResult {
+                name: self.name.clone(),
+                result: Err(err),
+            };
         }
 
         let output = exec_result.unwrap();
@@ -209,13 +216,16 @@ impl TestCase {
             })
             .collect::<Vec<_>>();
 
-        TestResult::Asserted(AssertionResult {
-            failures: indexmap! {
-                "status".to_string() => status,
-                "stdout".to_string() => stdout,
-                "stderr".to_string() => stderr,
-            },
-        })
+        TestResult {
+            name: self.name.clone(),
+            result: Ok(AssertionResult {
+                failures: indexmap! {
+                    "status".to_string() => status,
+                    "stdout".to_string() => stdout,
+                    "stderr".to_string() => stderr,
+                },
+            }),
+        }
     }
 }
 
@@ -270,37 +280,37 @@ mod tests {
             #[rstest]
             #[case("command is exit, no matchers",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} } ))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} } ) })]
             #[case("command is exit, status matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} } ) })]
             #[case("command is exit, status matchers are failed",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })})]
             #[case("command is exit, stdout matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }) })]
             #[case("command is exit, stdout matchers are failed",
             given_test_case(vec!["echo", "-n", "hello"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello")], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello")], STDERR_STRING.clone() => vec![]} }) })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
             given_test_case(vec!["cat"], "hello world", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world")], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world")], STDERR_STRING.clone() => vec![]} }) })]
             #[case("command is exit, stdout matchers are failed, env is given",
             given_test_case(vec!["printenv", "MESSAGE"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n")], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n")], STDERR_STRING.clone() => vec![]} }) })]
             #[case("command is exit, stderr matchers are succeeded",
             given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }) })]
             #[case("command is exit, stderr matchers are failed",
             given_test_case(vec!["bash", "-c", "echo -n hi >&2"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi")]} }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi")]} }) })]
             #[case("command is signaled",
             given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]}  }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }) })]
             #[case("command is timed out",
             given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult::Asserted(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec!["timed out".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]}  }))]
+            TestResult{ name: DEFAULT_NAME.to_string(), result: Ok(AssertionResult{ failures: indexmap!{STATUS_STRING.clone() => vec!["timed out".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} }) })]
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCase,
@@ -323,7 +333,13 @@ mod tests {
 
                 let actual = given.run();
 
-                assert!(matches!(actual, TestResult::ExecError(_)));
+                assert!(matches!(
+                    actual,
+                    TestResult {
+                        name: _,
+                        result: Err(_)
+                    }
+                ));
             }
         }
     }
@@ -336,29 +352,36 @@ mod tests {
 
         #[rstest]
         #[case(vec![], 0)]
-        #[case(vec![TestResult::Asserted(AssertionResult { failures:
+        #[case(vec![TestResult{name: "test".to_string(), result: Ok(AssertionResult { failures:
             indexmap!{
                 STATUS_STRING.clone() => vec![],
                 STDOUT_STRING.clone() => vec![],
                 STDERR_STRING.clone() => vec![],
             }
-        })], 1)]
-        #[case(vec![TestResult::ExecError("".to_string())], 1)]
+        })}], 1)]
+        #[case(vec![TestResult{ name: "test".to_string(), result: Err("".to_string()) }], 1)]
         #[case(vec![
-            TestResult::Asserted(AssertionResult {
+            TestResult{ name: "test".to_string(), result: Ok(AssertionResult {
                 failures: indexmap!{
                     STATUS_STRING.clone() => vec![],
                     STDOUT_STRING.clone() => vec![],
                     STDERR_STRING.clone() => vec![],
                 }
-            }),
-            TestResult::ExecError("".to_string()),
+            })},
+            TestResult{ name: "test2".to_string(), result: Err("".to_string()) },
         ], 2)]
         fn len(#[case] results: Vec<TestResult>, #[case] expected: usize) {
             let summary = TestResultSummary { results };
 
             assert_eq!(summary.len(), expected);
         }
+
+        static PASSED1_NAME: Lazy<String> = Lazy::new(|| "passed1".to_string());
+        static PASSED2_NAME: Lazy<String> = Lazy::new(|| "passed2".to_string());
+        static FAILURE1_NAME: Lazy<String> = Lazy::new(|| "failure1".to_string());
+        static FAILURE2_NAME: Lazy<String> = Lazy::new(|| "failure2".to_string());
+        static ERROR1_NAME: Lazy<String> = Lazy::new(|| "error1".to_string());
+        static ERROR2_NAME: Lazy<String> = Lazy::new(|| "error2".to_string());
 
         static PASSED1: Lazy<AssertionResult> = Lazy::new(|| AssertionResult {
             failures: indexmap! {
@@ -397,12 +420,12 @@ mod tests {
             (vec![], vec![], vec![]),
         )]
         #[case(
-            vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(FAILURE1.clone()), TestResult::ExecError(ERROR1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::Asserted(FAILURE2.clone()), TestResult::ExecError(ERROR2.clone())],
-            (vec![&*PASSED1, &*PASSED2], vec![&*FAILURE1, &*FAILURE2], vec![&*ERROR1, &*ERROR2]),
+            vec![TestResult{ name: "passed1".to_string(), result: Ok(PASSED1.clone())}, TestResult{ name: "failure1".to_string(), result: Ok(FAILURE1.clone()) }, TestResult{ name: "error1".to_string(), result: Err(ERROR1.clone()) }, TestResult{ name: "passed2".to_string(), result: Ok(PASSED2.clone()) }, TestResult{ name: "failure2".to_string(), result: Ok(FAILURE2.clone()) }, TestResult{ name: "error2".to_string(), result: Err(ERROR2.clone()) }],
+            (vec![(&*PASSED1_NAME, &*PASSED1), (&*PASSED2_NAME, &*PASSED2)], vec![(&*FAILURE1_NAME, &*FAILURE1), (&*FAILURE2_NAME, &*FAILURE2)], vec![(&*ERROR1_NAME, &*ERROR1), (&*ERROR2_NAME, &*ERROR2)]),
         )]
         fn classified_results(
             #[case] results: Vec<TestResult>,
-            #[case] expected: (Vec<&AssertionResult>, Vec<&AssertionResult>, Vec<&String>),
+            #[case] expected: ClassifiedResults,
         ) {
             let summary = TestResultSummary { results };
             let actual = summary.classified_results();
@@ -412,9 +435,9 @@ mod tests {
 
         #[rstest]
         #[case(vec![], true)]
-        #[case(vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(PASSED2.clone())], true)]
-        #[case(vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::Asserted(FAILURE1.clone())], false)]
-        #[case(vec![TestResult::Asserted(PASSED1.clone()), TestResult::Asserted(PASSED2.clone()), TestResult::ExecError(ERROR1.clone())], false)]
+        #[case(vec![TestResult{name: "test1".to_string(), result: Ok(PASSED1.clone())}, TestResult{ name: "test2".to_string(), result: Ok(PASSED2.clone())}], true)]
+        #[case(vec![TestResult{ name: "test1".to_string(), result: Ok(PASSED1.clone()) }, TestResult{ name: "test2".to_string(), result: Ok(PASSED2.clone()) }, TestResult{ name: "test3".to_string(), result: Ok(FAILURE1.clone()) }], false)]
+        #[case(vec![TestResult{ name: "test1".to_string(), result: Ok(PASSED1.clone()) }, TestResult{ name: "test2".to_string(), result: Ok(PASSED2.clone()) }, TestResult{ name: "test3".to_string(), result: Err(ERROR1.clone()) }], false)]
         fn is_all_passed(#[case] results: Vec<TestResult>, #[case] expected: bool) {
             let summary = TestResultSummary { results };
 
