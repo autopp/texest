@@ -46,7 +46,7 @@ impl Formatter for SimpleReporter {
 
         if !failed.is_empty() {
             writeln!(w, "\nFailures:").map_err(|err| err.to_string())?;
-            failed.iter().enumerate().try_for_each(|(i, ar)| {
+            failed.iter().enumerate().try_for_each(|(i, (_, ar))| {
                 writeln!(w, "\n{})", i + 1)
                     .map_err(|err| err.to_string())
                     .unwrap();

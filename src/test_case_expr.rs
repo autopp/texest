@@ -16,6 +16,7 @@ pub struct TestExprError {
 
 #[derive(Debug, PartialEq)]
 pub struct TestCaseExpr {
+    pub name: Option<Expr>,
     pub filename: String,
     pub path: String,
     pub command: Vec<Expr>,
@@ -60,6 +61,25 @@ pub fn eval_test_expr(
             })
             .collect()
     });
+
+    let name = if let Some(name_expr) = &test_case_expr.name {
+        v.in_field("name", |v| match eval_expr(name_expr) {
+            Ok(value) => v.must_be_string(&value),
+            Err(message) => {
+                v.add_violation(format!("eval error: {}", message));
+                None
+            }
+        })
+    } else {
+        Some(
+            command
+                .iter()
+                .map(|x| yash_quote::quote(x))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    }
+    .unwrap_or("".to_string());
 
     let stdin = v
         .in_field("stdin", |v| match eval_expr(&test_case_expr.stdin) {
@@ -125,6 +145,7 @@ pub fn eval_test_expr(
 
     if v.violations.is_empty() {
         Ok(vec![TestCase {
+            name,
             filename: test_case_expr.filename.clone(),
             path: test_case_expr.path.clone(),
             command,
@@ -157,6 +178,7 @@ pub mod testutil {
     use super::TestCaseExpr;
 
     pub struct TestCaseExprTemplate {
+        pub name: Option<Expr>,
         pub filename: &'static str,
         pub path: &'static str,
         pub command: Vec<Expr>,
@@ -171,6 +193,7 @@ pub mod testutil {
     }
 
     impl TestCaseExprTemplate {
+        pub const NAME_FOR_DEFAULT_COMMAND: &str = "echo hello";
         pub const DEFAULT_FILENAME: &str = "test.yaml";
         pub const DEFAULT_PATH: &str = "$.tests[0]";
 
@@ -180,6 +203,7 @@ pub mod testutil {
 
         pub fn build(&self) -> TestCaseExpr {
             TestCaseExpr {
+                name: self.name.clone(),
                 filename: self.filename.to_string(),
                 path: self.path.to_string(),
                 command: self.command.clone(),
@@ -202,6 +226,7 @@ pub mod testutil {
     impl Default for TestCaseExprTemplate {
         fn default() -> Self {
             Self {
+                name: None,
                 filename: TestCaseExprTemplate::DEFAULT_FILENAME,
                 path: TestCaseExprTemplate::DEFAULT_PATH,
                 command: TestCaseExprTemplate::default_command(),
@@ -246,6 +271,7 @@ mod tests {
 
         #[rstest]
         #[case("with smallest case", TestCaseExprTemplate::default(), vec![TestCase {
+            name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
             filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
             path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
             command: vec!["echo".to_string(), "hello".to_string()],
@@ -258,6 +284,28 @@ mod tests {
             stdout_matchers: vec![],
             stderr_matchers: vec![],
         }])]
+        #[case("with name",
+            TestCaseExprTemplate {
+                name: Some(literal_expr("mytest")),
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    name: "mytest".to_string(),
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    stdin: "".to_string(),
+                    env: vec![],
+                    timeout: Duration::from_secs(10),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                    status_matchers: vec![],
+                    stdout_matchers: vec![],
+                    stderr_matchers: vec![],
+                },
+            ]
+        )]
         #[case("with stdin case",
             TestCaseExprTemplate {
                 stdin: literal_expr("hello"),
@@ -265,6 +313,7 @@ mod tests {
             },
             vec![
                 TestCase {
+                    name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
@@ -286,6 +335,7 @@ mod tests {
             },
             vec![
                 TestCase {
+                    name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
@@ -309,6 +359,7 @@ mod tests {
             },
             vec![
                 TestCase {
+                    name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
@@ -332,6 +383,7 @@ mod tests {
             },
             vec![
                 TestCase {
+                    name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
@@ -355,6 +407,7 @@ mod tests {
             },
             vec![
                 TestCase {
+                    name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     command: vec!["echo".to_string(), "hello".to_string()],
@@ -383,6 +436,24 @@ mod tests {
         }
 
         #[rstest]
+        #[case("with eval error in name",
+            TestCaseExprTemplate {
+                name: Some(env_var_expr("_undefined")),
+                ..Default::default()
+            },
+            vec![
+                violation(".name", "eval error: env var _undefined is not defined"),
+            ]
+        )]
+        #[case("with with not string name",
+            TestCaseExprTemplate {
+                name: Some(literal_expr(true)),
+                ..Default::default()
+            },
+            vec![
+                violation(".name", "should be string, but is bool"),
+            ]
+        )]
         #[case("with eval error in command",
             TestCaseExprTemplate {
                 command: vec![literal_expr(true), env_var_expr("_undefined")],
