@@ -1,0 +1,22 @@
+tests:
+  - command:
+      - $env: TEXEST
+      - '-'
+    env:
+      MESSAGE: hello
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - '-n'
+              - $json:
+                  answer: 42
+            expect:
+              status:
+                eq: 0
+              stdout:
+                eq: '{"answer":42}'
+    expect:
+      status:
+        eq: 0

@@ -156,6 +156,7 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
                 v.may_be_string(value).map(|name| Expr::EnvVar(name, None))
             }),
             "yaml" => Some(Expr::Yaml(value.clone())),
+            "json" => Some(Expr::Json(value.clone())),
             _ => None,
         })
         .unwrap_or_else(|| Expr::Literal(x.clone()))
@@ -248,7 +249,7 @@ tests:
             stdin: literal_expr("hello"),
             ..Default::default()
         }])]
-        #[case("with command contains simple stdin", "
+        #[case("with command contains yaml stdin", "
 tests:
     - command:
         - cat
@@ -257,6 +258,17 @@ tests:
           message: hello", vec![TestCaseExprTemplate {
             command: vec![Expr::Literal(Value::from("cat".to_string()))],
             stdin: Expr::Yaml(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+            ..Default::default()
+        }])]
+        #[case("with command contains json stdin", "
+tests:
+    - command:
+        - cat
+      stdin:
+        $json:
+          message: hello", vec![TestCaseExprTemplate {
+            command: vec![Expr::Literal(Value::from("cat".to_string()))],
+            stdin: Expr::Json(Value::from(mapping(vec![("message", Value::from("hello"))]))),
             ..Default::default()
         }])]
         #[case("with command contains env", "

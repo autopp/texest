@@ -5,6 +5,7 @@ pub enum Expr {
     Literal(Value),
     EnvVar(String, Option<String>),
     Yaml(Value),
+    Json(Value),
 }
 
 pub fn eval_expr(expr: &Expr) -> Result<Value, String> {
@@ -15,6 +16,9 @@ pub fn eval_expr(expr: &Expr) -> Result<Value, String> {
             .or_else(|| default.clone().map(Value::from))
             .ok_or_else(|| format!("env var {} is not defined", name)),
         Expr::Yaml(v) => serde_yaml::to_string(v)
+            .map(Value::from)
+            .map_err(|err| err.to_string()),
+        Expr::Json(v) => serde_json::to_string(v)
             .map(Value::from)
             .map_err(|err| err.to_string()),
     }
@@ -54,6 +58,7 @@ mod tests {
     #[case("undefined env var with default value", Expr::EnvVar("UNDEFINED_VAR".to_string(), Some("default value".to_string())), Ok(Value::from("default value".to_string())))]
     #[case("undefined env var without default value", Expr::EnvVar("UNDEFINED_VAR".to_string(), None), Err("env var UNDEFINED_VAR is not defined".to_string()))]
     #[case("yaml", Expr::Yaml(Value::from(mapping(vec![("x", Value::from(true))]))), Ok(Value::from("x: true\n")))]
+    #[case("json", Expr::Json(Value::from(mapping(vec![("x", Value::from(true))]))), Ok(Value::from("{\"x\":true}")))]
     fn test_eval_expr(
         #[case] title: &str,
         #[case] expr: Expr,
