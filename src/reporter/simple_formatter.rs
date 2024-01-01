@@ -42,15 +42,15 @@ impl Formatter for SimpleReporter {
         _cm: &super::ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String> {
-        let (_, failed, _) = summary.classified_results();
+        let (_, failed) = summary.classified_results();
 
         if !failed.is_empty() {
             writeln!(w, "\nFailures:").map_err(|err| err.to_string())?;
-            failed.iter().enumerate().try_for_each(|(i, (name, ar))| {
-                writeln!(w, "\n{}) {}", i + 1, name)
+            failed.iter().enumerate().try_for_each(|(i, &tr)| {
+                writeln!(w, "\n{}) {}", i + 1, tr.name)
                     .map_err(|err| err.to_string())
                     .unwrap();
-                ar.failures.iter().try_for_each(|(name, messages)| {
+                tr.failures.iter().try_for_each(|(name, messages)| {
                     messages
                         .iter()
                         .try_for_each(|m| writeln!(w, "  {}: {}", name, m))
