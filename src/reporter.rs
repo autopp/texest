@@ -39,31 +39,64 @@ impl Color {
 }
 
 pub trait Formatter {
-    fn on_run_start(&mut self, w: &mut Box<dyn Write>, cm: &ColorMarker) -> Result<(), String>;
+    fn on_run_start(&mut self, w: &mut dyn Write, cm: &ColorMarker) -> Result<(), String>;
     fn on_test_case_start(
         &mut self,
-        w: &mut Box<dyn Write>,
+        w: &mut dyn Write,
         cm: &ColorMarker,
         test_case: &TestCase,
     ) -> Result<(), String>;
     fn on_test_case_end(
         &mut self,
-        w: &mut Box<dyn Write>,
+        w: &mut dyn Write,
         cm: &ColorMarker,
         test_result: &TestResult,
     ) -> Result<(), String>;
     fn on_run_end(
         &mut self,
-        w: &mut Box<dyn Write>,
+        w: &mut dyn Write,
         cm: &ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String>;
 }
 
+impl<F: Formatter + ?Sized> Formatter for Box<F> {
+    fn on_run_start(&mut self, w: &mut dyn Write, cm: &ColorMarker) -> Result<(), String> {
+        (**self).on_run_start(w, cm)
+    }
+
+    fn on_test_case_start(
+        &mut self,
+        w: &mut dyn Write,
+        cm: &ColorMarker,
+        test_case: &TestCase,
+    ) -> Result<(), String> {
+        (**self).on_test_case_start(w, cm, test_case)
+    }
+
+    fn on_test_case_end(
+        &mut self,
+        w: &mut dyn Write,
+        cm: &ColorMarker,
+        test_result: &TestResult,
+    ) -> Result<(), String> {
+        (**self).on_test_case_end(w, cm, test_result)
+    }
+
+    fn on_run_end(
+        &mut self,
+        w: &mut dyn Write,
+        cm: &ColorMarker,
+        summary: &TestResultSummary,
+    ) -> Result<(), String> {
+        (**self).on_run_end(w, cm, summary)
+    }
+}
+
 pub struct Reporter<'a, 'b> {
-    w: &'a mut Box<dyn Write>,
+    w: &'a mut dyn Write,
     use_color: bool,
-    formatter: &'b mut Box<dyn Formatter>,
+    formatter: &'b mut dyn Formatter,
 }
 
 pub struct ColorMarker {
@@ -133,11 +166,7 @@ impl ColorMarker {
 }
 
 impl<'a, 'b> Reporter<'a, 'b> {
-    pub fn new(
-        w: &'a mut Box<dyn Write>,
-        use_color: bool,
-        formatter: &'b mut Box<dyn Formatter>,
-    ) -> Self {
+    pub fn new(w: &'a mut dyn Write, use_color: bool, formatter: &'b mut dyn Formatter) -> Self {
         Self {
             w,
             use_color,

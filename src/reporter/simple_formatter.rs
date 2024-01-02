@@ -7,7 +7,7 @@ pub struct SimpleReporter {}
 impl Formatter for SimpleReporter {
     fn on_run_start(
         &mut self,
-        _w: &mut Box<dyn std::io::Write>,
+        _w: &mut dyn std::io::Write,
         _cm: &super::ColorMarker,
     ) -> Result<(), String> {
         Ok(())
@@ -15,7 +15,7 @@ impl Formatter for SimpleReporter {
 
     fn on_test_case_start(
         &mut self,
-        _w: &mut Box<dyn std::io::Write>,
+        _w: &mut dyn std::io::Write,
         _cm: &super::ColorMarker,
         _test_case: &crate::test_case::TestCase,
     ) -> Result<(), String> {
@@ -24,7 +24,7 @@ impl Formatter for SimpleReporter {
 
     fn on_test_case_end(
         &mut self,
-        w: &mut Box<dyn std::io::Write>,
+        w: &mut dyn std::io::Write,
         cm: &super::ColorMarker,
         test_result: &crate::test_case::TestResult,
     ) -> Result<(), String> {
@@ -38,7 +38,7 @@ impl Formatter for SimpleReporter {
 
     fn on_run_end(
         &mut self,
-        w: &mut Box<dyn std::io::Write>,
+        w: &mut dyn std::io::Write,
         _cm: &super::ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String> {
