@@ -159,7 +159,7 @@ fn main() {
     };
 
     let mut f: Box<dyn Formatter> = match args.format {
-        Format::Simple => Box::new(reporter::SimpleReporter {}),
+        Format::Simple => Box::new(reporter::SimpleFormatter {}),
         Format::Json => Box::new(reporter::JsonFormatter {}),
     };
 
