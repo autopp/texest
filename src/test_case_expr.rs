@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use serde_yaml::Mapping;
+use indexmap::IndexMap;
 
 use crate::{
     expr::{eval_expr, Expr},
@@ -25,9 +25,9 @@ pub struct TestCaseExpr {
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
-    pub status_matchers: Mapping,
-    pub stdout_matchers: Mapping,
-    pub stderr_matchers: Mapping,
+    pub status_matchers: IndexMap<String, Expr>,
+    pub stdout_matchers: IndexMap<String, Expr>,
+    pub stderr_matchers: IndexMap<String, Expr>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -114,9 +114,14 @@ pub fn eval_test_expr(
         test_case_expr
             .status_matchers
             .iter()
-            .filter_map(|(name, param)| {
-                v.must_be_string(name)
-                    .and_then(|name| status_mr.parse(name, v, param))
+            .filter_map(|(name, param_expr)| match eval_expr(param_expr) {
+                Ok(param) => status_mr.parse(name, v, &param),
+                Err(message) => {
+                    v.in_field(name, |v| {
+                        v.add_violation(format!("eval error: {}", message))
+                    });
+                    None
+                }
             })
             .collect::<Vec<_>>()
     });
@@ -125,9 +130,14 @@ pub fn eval_test_expr(
         test_case_expr
             .stdout_matchers
             .iter()
-            .filter_map(|(name, param)| {
-                v.must_be_string(name)
-                    .and_then(|name| stream_mr.parse(name, v, param))
+            .filter_map(|(name, param_expr)| match eval_expr(param_expr) {
+                Ok(param) => stream_mr.parse(name, v, &param),
+                Err(message) => {
+                    v.in_field(name, |v| {
+                        v.add_violation(format!("eval error: {}", message))
+                    });
+                    None
+                }
             })
             .collect::<Vec<_>>()
     });
@@ -136,9 +146,14 @@ pub fn eval_test_expr(
         test_case_expr
             .stderr_matchers
             .iter()
-            .filter_map(|(name, param)| {
-                v.must_be_string(name)
-                    .and_then(|name| stream_mr.parse(name, v, param))
+            .filter_map(|(name, param_expr)| match eval_expr(param_expr) {
+                Ok(param) => stream_mr.parse(name, v, &param),
+                Err(message) => {
+                    v.in_field(name, |v| {
+                        v.add_violation(format!("eval error: {}", message))
+                    });
+                    None
+                }
             })
             .collect::<Vec<_>>()
     });
@@ -169,7 +184,7 @@ pub fn eval_test_expr(
 pub mod testutil {
     use std::time::Duration;
 
-    use serde_yaml::Mapping;
+    use indexmap::IndexMap;
 
     use crate::expr::Expr;
 
@@ -187,9 +202,9 @@ pub mod testutil {
         pub timeout: u64,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
-        pub status_matchers: Mapping,
-        pub stdout_matchers: Mapping,
-        pub stderr_matchers: Mapping,
+        pub status_matchers: IndexMap<&'static str, Expr>,
+        pub stdout_matchers: IndexMap<&'static str, Expr>,
+        pub stderr_matchers: IndexMap<&'static str, Expr>,
     }
 
     impl TestCaseExprTemplate {
@@ -216,9 +231,21 @@ pub mod testutil {
                 timeout: Duration::from_secs(self.timeout),
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
-                status_matchers: self.status_matchers.clone(),
-                stdout_matchers: self.stdout_matchers.clone(),
-                stderr_matchers: self.stderr_matchers.clone(),
+                status_matchers: self
+                    .status_matchers
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
+                stdout_matchers: self
+                    .stdout_matchers
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
+                stderr_matchers: self
+                    .stderr_matchers
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
             }
         }
     }
@@ -235,9 +262,9 @@ pub mod testutil {
                 timeout: 10,
                 tee_stdout: false,
                 tee_stderr: false,
-                status_matchers: Mapping::new(),
-                stdout_matchers: Mapping::new(),
-                stderr_matchers: Mapping::new(),
+                status_matchers: IndexMap::new(),
+                stdout_matchers: IndexMap::new(),
+                stderr_matchers: IndexMap::new(),
             }
         }
     }
@@ -248,7 +275,6 @@ mod tests {
     use super::*;
     mod eval_test_case_expr {
         use crate::{
-            ast::testuitl::mapping,
             expr::testutil::{env_var_expr, literal_expr},
             matcher::testutil::{
                 new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
@@ -258,6 +284,7 @@ mod tests {
         };
 
         use super::*;
+        use indexmap::indexmap;
         use rstest::rstest;
         use serde_yaml::Value;
 
@@ -352,9 +379,9 @@ mod tests {
         )]
         #[case("with status matcher case",
             TestCaseExprTemplate {
-                status_matchers: mapping(vec![
-                    (SUCCESS_MATCHER, Value::from(true)),
-                ]),
+                status_matchers: indexmap!{
+                    SUCCESS_MATCHER => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
@@ -376,9 +403,9 @@ mod tests {
         )]
         #[case("with stdout matcher case",
             TestCaseExprTemplate {
-                stdout_matchers: mapping(vec![
-                    (SUCCESS_MATCHER, Value::from(true)),
-                ]),
+                stdout_matchers: indexmap!{
+                    SUCCESS_MATCHER => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
@@ -400,9 +427,9 @@ mod tests {
         )]
         #[case("with stderr matcher case",
             TestCaseExprTemplate {
-                stderr_matchers: mapping(vec![
-                    (SUCCESS_MATCHER, Value::from(true)),
-                ]),
+                stderr_matchers: indexmap!{
+                    SUCCESS_MATCHER => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
@@ -492,11 +519,22 @@ mod tests {
                 violation(".stdin", "eval error: env var _undefined is not defined"),
             ]
         )]
+        #[case("with eval error in status matcher param",
+            TestCaseExprTemplate {
+                status_matchers: indexmap!{
+                    SUCCESS_MATCHER => env_var_expr("_undefined"),
+                },
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.status.success", "eval error: env var _undefined is not defined")
+            ]
+        )]
         #[case("with undefined status matcher",
             TestCaseExprTemplate {
-                status_matchers: mapping(vec![
-                    ("unknown", Value::from(true)),
-                ]),
+                status_matchers: indexmap!{
+                    "unknown" => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
@@ -505,20 +543,31 @@ mod tests {
         )]
         #[case("with invalid status matcher",
             TestCaseExprTemplate {
-                status_matchers: mapping(vec![
-                    (PARSE_ERROR_MATCHER, Value::from(true)),
-                ]),
+                status_matchers: indexmap!{
+                    PARSE_ERROR_MATCHER => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
                 violation(".expect.status.parse_error", VIOLATION_MESSAGE)
             ]
         )]
+        #[case("with eval error in stdout matcher param",
+            TestCaseExprTemplate {
+                stdout_matchers: indexmap!{
+                    SUCCESS_MATCHER => env_var_expr("_undefined"),
+                },
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.stdout.success", "eval error: env var _undefined is not defined")
+            ]
+        )]
         #[case("with undefined stdout matcher",
             TestCaseExprTemplate {
-                stdout_matchers: mapping(vec![
-                    ("unknown", Value::from(true)),
-                ]),
+                stdout_matchers: indexmap!{
+                    "unknown" => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
@@ -527,20 +576,31 @@ mod tests {
         )]
         #[case("with invalid stdout matcher",
             TestCaseExprTemplate {
-                stdout_matchers: mapping(vec![
-                    (PARSE_ERROR_MATCHER, Value::from(true)),
-                ]),
+                stdout_matchers: indexmap!{
+                    PARSE_ERROR_MATCHER => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
                 violation(".expect.stdout.parse_error", VIOLATION_MESSAGE)
             ]
         )]
+        #[case("with eval error in stdout matcher param",
+            TestCaseExprTemplate {
+                stdout_matchers: indexmap!{
+                    SUCCESS_MATCHER => env_var_expr("_undefined"),
+                },
+                ..Default::default()
+            },
+            vec![
+                violation(".expect.stdout.success", "eval error: env var _undefined is not defined")
+            ]
+        )]
         #[case("with undefined stderr matcher",
             TestCaseExprTemplate {
-                stderr_matchers: mapping(vec![
-                    ("unknown", Value::from(true)),
-                ]),
+                stderr_matchers: indexmap!{
+                    "unknown" => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![
@@ -549,9 +609,9 @@ mod tests {
         )]
         #[case("with invalid stderr matcher",
             TestCaseExprTemplate {
-                stderr_matchers: mapping(vec![
-                    (PARSE_ERROR_MATCHER, Value::from(true)),
-                ]),
+                stderr_matchers: indexmap!{
+                    PARSE_ERROR_MATCHER => literal_expr(true),
+                },
                 ..Default::default()
             },
             vec![

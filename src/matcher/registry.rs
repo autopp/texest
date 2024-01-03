@@ -23,11 +23,11 @@ impl<T> MatcherRegistry<T> {
 
     pub fn parse(
         &self,
-        name: String,
+        name: &str,
         v: &mut super::Validator,
         param: &serde_yaml::Value,
     ) -> Option<Box<dyn super::Matcher<T>>> {
-        match self.matchers.get(&name) {
+        match self.matchers.get(name) {
             Some(parser) => v.in_field(name, |v| parser(v, param)),
             None => {
                 v.add_violation(format!("{} matcher {} is not defined", self.target, name));
@@ -81,7 +81,7 @@ mod tests {
                 let mut v = Validator::new("test.yaml".to_string());
                 let param = Value::from(true);
 
-                let actual = r.parse(NAME.to_string(), &mut v, &param);
+                let actual = r.parse(NAME, &mut v, &param);
 
                 assert_eq!(
                     actual.unwrap().as_ref(),
@@ -96,7 +96,7 @@ mod tests {
                 let mut v = Validator::new("test.yaml".to_string());
                 let param = Value::from(true);
 
-                let actual = r.parse(NAME.to_string(), &mut v, &param);
+                let actual = r.parse(NAME, &mut v, &param);
 
                 assert!(actual.is_none());
                 assert_eq!(
@@ -117,7 +117,7 @@ mod tests {
                 let mut v = Validator::new("test.yaml".to_string());
                 let param = Value::from(true);
 
-                let actual = r.parse(NAME.to_string(), &mut v, &param);
+                let actual = r.parse(NAME, &mut v, &param);
 
                 assert!(actual.is_none());
                 assert_eq!(
