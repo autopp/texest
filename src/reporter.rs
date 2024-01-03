@@ -196,4 +196,5 @@ impl<'a, 'b> Reporter<'a, 'b> {
     }
 }
 
+pub use json_formatter::JsonFormatter;
 pub use simple_formatter::SimpleReporter;
