@@ -1,3 +1,4 @@
+mod json_formatter;
 mod simple_formatter;
 
 use std::io::Write;
