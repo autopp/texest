@@ -13,10 +13,17 @@ tests:
               - $json:
                   answer: 42
             expect:
-              status:
-                eq: 0
               stdout:
                 eq: '{"answer":42}'
+          - command:
+              - echo
+              - '{"answer": 42, "danger": 666}'
+            expect:
+              stdout:
+                eq_json:
+                  $json:
+                    danger: 666
+                    answer: 42
     expect:
       status:
         eq: 0

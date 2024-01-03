@@ -1,7 +1,9 @@
 use std::time::Duration;
 
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
+
 use serde_yaml::{Mapping, Value};
 
 use crate::{
@@ -63,17 +65,17 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
                         let (status_matchers, stdout_matchers, stderr_matchers) = v
                             .may_have_map(test, "expect", |v, expect| {
                                 let status_matchers = v
-                                    .may_have_map(expect, "status", |_, status| status.clone())
-                                    .unwrap_or(Mapping::new());
+                                    .may_have_map(expect, "status", parse_expected)
+                                    .unwrap_or(IndexMap::new());
                                 let stdout_matchers = v
-                                    .may_have_map(expect, "stdout", |_, stdout| stdout.clone())
-                                    .unwrap_or(Mapping::new());
+                                    .may_have_map(expect, "stdout", parse_expected)
+                                    .unwrap_or(IndexMap::new());
                                 let stderr_matchers = v
-                                    .may_have_map(expect, "stderr", |_, stderr| stderr.clone())
-                                    .unwrap_or(Mapping::new());
+                                    .may_have_map(expect, "stderr", parse_expected)
+                                    .unwrap_or(IndexMap::new());
                                 (status_matchers, stdout_matchers, stderr_matchers)
                             })
-                            .unwrap_or((Mapping::new(), Mapping::new(), Mapping::new()));
+                            .unwrap_or((IndexMap::new(), IndexMap::new(), IndexMap::new()));
                         let env: Vec<(String, Expr)> = v.may_have_map(test, "env", |v, env| {
                             env.iter()
                                 .filter_map(|(name, value)| {
@@ -162,6 +164,21 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
         .unwrap_or_else(|| Expr::Literal(x.clone()))
 }
 
+fn parse_expected(v: &mut Validator, m: &Mapping) -> IndexMap<String, Expr> {
+    let mut result = IndexMap::<String, Expr>::new();
+    m.iter().for_each(|(name, value)| {
+        if let Some(name) = v.may_be_string(name) {
+            result.insert(name, parse_expr(v, value));
+        } else {
+            v.add_violation(format!(
+                "all matcher name should be string, but contains {}",
+                name.type_name()
+            ));
+        }
+    });
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +194,7 @@ mod tests {
         };
 
         use super::*;
+        use indexmap::indexmap;
         use rstest::rstest;
         use serde_yaml::Value;
 
@@ -291,7 +309,7 @@ tests:
       expect:
         status:
           success: true", vec![TestCaseExprTemplate {
-            status_matchers: mapping(vec![("success", Value::from(true))]),
+            status_matchers: indexmap!{ "success" => literal_expr(true) },
             ..Default::default()
         }])]
         #[case("with stdout matcher", "
@@ -302,7 +320,7 @@ tests:
       expect:
         stdout:
           be_empty: true", vec![TestCaseExprTemplate {
-            stdout_matchers: mapping(vec![("be_empty", Value::from(true))]),
+            stdout_matchers: indexmap!{ "be_empty" => literal_expr(true) },
             ..Default::default()
         }])]
         #[case("with stderr matcher", "
@@ -313,7 +331,7 @@ tests:
       expect:
         stderr:
           be_empty: true", vec![TestCaseExprTemplate {
-            stderr_matchers: mapping(vec![("be_empty", Value::from(true))]),
+            stderr_matchers: indexmap!{ "be_empty" => literal_expr(true) },
             ..Default::default()
         }])]
         fn success_case(
@@ -349,8 +367,11 @@ tests:
         #[case("when test env contains empty name", "tests: [{command: [echo], env: {'': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]
         #[case("when test env contains empty name", "tests: [{command: [echo], env: {'1MESSAGE': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]
         #[case("when test status matcher is not map", "tests: [{command: [echo], expect: {status: 42}}]", vec![("$.tests[0].expect.status", "should be map, but is uint")])]
+        #[case("when test status matcher contains not string key", "tests: [{command: [echo], expect: {status: {true: 42}}}]", vec![("$.tests[0].expect.status", "all matcher name should be string, but contains bool")])]
         #[case("when test stdout matcher is not map", "tests: [{command: [echo], expect: {stdout: 42}}]", vec![("$.tests[0].expect.stdout", "should be map, but is uint")])]
+        #[case("when test stdout matcher contains not string key", "tests: [{command: [echo], expect: {stdout: {true: 42}}}]", vec![("$.tests[0].expect.stdout", "all matcher name should be string, but contains bool")])]
         #[case("when test stderr matcher is not map", "tests: [{command: [echo], expect: {stderr: 42}}]", vec![("$.tests[0].expect.stderr", "should be map, but is uint")])]
+        #[case("when test stderr matcher contains not string key", "tests: [{command: [echo], expect: {stderr: {true: 42}}}]", vec![("$.tests[0].expect.stderr", "all matcher name should be string, but contains bool")])]
         fn error_case(
             #[case] title: &str,
             #[case] input: &str,
