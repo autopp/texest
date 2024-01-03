@@ -32,11 +32,19 @@ enum Color {
     Never,
 }
 
+#[derive(Debug, Clone, ValueEnum)]
+enum Format {
+    Simple,
+    Json,
+}
+
 #[derive(Parser)]
 struct Args {
     files: Vec<String>,
     #[clap(value_enum, long = "color", default_value_t = Color::Auto)]
     color: Color,
+    #[clap(value_enum, long = "format", default_value_t = Format::Simple)]
+    format: Format,
 }
 
 const EXIT_CODE_TEST_FAILED: i32 = 1;
@@ -150,8 +158,12 @@ fn main() {
         Color::Never => false,
     };
 
+    let mut f: Box<dyn Formatter> = match args.format {
+        Format::Simple => Box::new(reporter::SimpleReporter {}),
+        Format::Json => Box::new(reporter::JsonFormatter {}),
+    };
+
     let mut w: Box<dyn Write> = Box::new(std::io::stdout());
-    let mut f: Box<dyn Formatter> = Box::new(reporter::SimpleReporter {});
     let mut r = Reporter::new(&mut w, use_color, &mut f);
 
     let result = run_tests(test_case_files, &mut r);

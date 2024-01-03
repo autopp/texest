@@ -1,3 +1,4 @@
+mod json_formatter;
 mod simple_formatter;
 
 use std::io::Write;
@@ -195,4 +196,5 @@ impl<'a, 'b> Reporter<'a, 'b> {
     }
 }
 
+pub use json_formatter::JsonFormatter;
 pub use simple_formatter::SimpleReporter;
