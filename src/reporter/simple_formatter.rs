@@ -2,9 +2,9 @@ use crate::test_case::TestResultSummary;
 
 use super::Formatter;
 
-pub struct SimpleReporter {}
+pub struct SimpleFormatter {}
 
-impl Formatter for SimpleReporter {
+impl Formatter for SimpleFormatter {
     fn on_run_start(
         &mut self,
         _w: &mut dyn std::io::Write,
