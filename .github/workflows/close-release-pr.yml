@@ -20,11 +20,11 @@ jobs:
           TAG="v${VERSION}"
           echo target version is ${TAG}
 
-          if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${VERSION}\")") = false ]; then
+          if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${TAG}\")") = false ]; then
             echo "Release ${TAG} is not found"
             exit 1
           fi
-          if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${VERSION}\" and .draft == false)") = true ]; then
+          if [ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${TAG}\" and .draft == false)") = true ]; then
             echo "Release ${TAG} is already published"
             exit 0
           fi
