@@ -10,5 +10,5 @@ tests:
     expect:
       status:
         eq: 2
-      # stderr:
-      #   contain: 'duplicated input files: test1.yaml, test2.yaml'
+      stderr:
+        contain: 'duplicated input files: test1.yaml, test2.yaml'

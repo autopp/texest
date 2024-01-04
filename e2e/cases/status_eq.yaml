@@ -18,6 +18,8 @@ tests:
     command:
       - $env: TEXEST
       - '-'
+      - --format
+      - json
     stdin:
       $yaml:
         tests:
@@ -29,3 +31,17 @@ tests:
     expect:
       status:
         eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 1
+            num_passed_test_cases: 0
+            num_failed_test_cases: 1
+            success: false
+            test_results:
+              - name: 'false'
+                passed: false
+                failures:
+                  - subject: status
+                    messages:
+                      - 'should be 0, but got 1'

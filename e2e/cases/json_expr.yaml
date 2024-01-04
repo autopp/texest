@@ -7,7 +7,8 @@ tests:
     stdin:
       $yaml:
         tests:
-          - command:
+          - name: $json in command
+            command:
               - echo
               - '-n'
               - $json:
@@ -15,7 +16,8 @@ tests:
             expect:
               stdout:
                 eq: '{"answer":42}'
-          - command:
+          - name: $json in matcher
+            command:
               - echo
               - '{"answer": 42, "danger": 666}'
             expect:

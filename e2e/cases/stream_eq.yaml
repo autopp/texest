@@ -19,6 +19,8 @@ tests:
     command:
       - $env: TEXEST
       - '-'
+      - --format
+      - json
     stdin:
       $yaml:
         tests:
@@ -31,3 +33,18 @@ tests:
     expect:
       status:
         eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 1
+            num_passed_test_cases: 0
+            num_failed_test_cases: 1
+            success: false
+            test_results:
+              - name: 'echo hello'
+                passed: false
+                failures:
+                  - subject: stdout
+                    messages:
+                      - "should be \"goodbye\n\", but got \"hello\n\""
+
