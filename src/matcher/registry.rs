@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsString};
+use std::collections::HashMap;
 
 use super::{status, stream, MatcherParser};
 
@@ -45,7 +45,7 @@ pub fn new_status_matcher_registry() -> StatusMatcherRegistry {
     r
 }
 
-pub type StreamMatcherRegistry = MatcherRegistry<OsString>;
+pub type StreamMatcherRegistry = MatcherRegistry<Vec<u8>>;
 
 pub fn new_stream_matcher_registry() -> StreamMatcherRegistry {
     let mut r = StreamMatcherRegistry::new("stream");

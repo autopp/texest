@@ -1,10 +1,10 @@
-use std::{any::Any, ffi::OsString, os::unix::prelude::OsStringExt};
+use std::any::Any;
 
 use crate::{matcher::Matcher, validator::Validator};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContainMatcher {
-    expected: OsString,
+    expected: Vec<u8>,
 }
 
 impl PartialEq<dyn Any> for ContainMatcher {
@@ -15,27 +15,24 @@ impl PartialEq<dyn Any> for ContainMatcher {
     }
 }
 
-impl Matcher<OsString> for ContainMatcher {
-    fn matches(&self, actual: OsString) -> Result<(bool, String), String> {
-        let expected_bytes = self.expected.clone().into_vec();
+impl Matcher<Vec<u8>> for ContainMatcher {
+    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
         let matched = actual
-            .clone()
-            .into_vec()
-            .windows(expected_bytes.len())
-            .any(|w| w == expected_bytes);
+            .windows(self.expected.len())
+            .any(|w| w == self.expected);
 
         Ok((
             matched,
             if matched {
                 format!(
                     "should not contain \"{}\", but contain it",
-                    self.expected.to_string_lossy()
+                    String::from_utf8_lossy(&self.expected)
                 )
             } else {
                 format!(
                     "should contain \"{}\", but got \"{}\"",
-                    self.expected.to_string_lossy(),
-                    actual.to_string_lossy()
+                    String::from_utf8_lossy(&self.expected),
+                    String::from_utf8_lossy(actual)
                 )
             },
         ))
@@ -49,9 +46,9 @@ impl Matcher<OsString> for ContainMatcher {
 pub fn parse_contain_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<OsString> + 'static>> {
+) -> Option<Box<dyn Matcher<Vec<u8>> + 'static>> {
     v.must_be_string(x).map(|expected| {
-        let b: Box<dyn Matcher<OsString> + 'static> = Box::new(ContainMatcher {
+        let b: Box<dyn Matcher<Vec<u8>> + 'static> = Box::new(ContainMatcher {
             expected: expected.into(),
         });
         b
@@ -75,12 +72,11 @@ mod tests {
         #[case] expected_matched: bool,
         #[case] expected_message: &str,
     ) {
-        let given: OsString = given.into();
         let m = ContainMatcher {
             expected: "hello".into(),
         };
         assert_eq!(
-            m.matches(given),
+            m.matches(&given.as_bytes().to_vec()),
             Ok((expected_matched, expected_message.to_string()))
         );
     }
@@ -102,7 +98,7 @@ mod tests {
             assert_eq!(
                 casted,
                 Some(&ContainMatcher {
-                    expected: OsString::from("hello")
+                    expected: "hello".into()
                 })
             );
         }
