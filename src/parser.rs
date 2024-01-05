@@ -21,18 +21,22 @@ pub struct Error {
 }
 
 impl Error {
-    fn without_violations(filename: String, message: String) -> Self {
+    fn without_violations(filename: &str, message: impl Into<String>) -> Self {
         Self {
-            filename,
-            message,
+            filename: filename.to_string(),
+            message: message.into(),
             violations: vec![],
         }
     }
 
-    fn with_violations(filename: String, message: String, violations: Vec<Violation>) -> Self {
+    fn with_violations(
+        filename: &str,
+        message: impl Into<String>,
+        violations: Vec<Violation>,
+    ) -> Self {
         Self {
-            filename,
-            message,
+            filename: filename.to_string(),
+            message: message.into(),
             violations,
         }
     }
@@ -41,15 +45,12 @@ impl Error {
 const DEFAULT_TIMEOUT: u64 = 10;
 static VAR_NAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap());
 
-pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExprFile, Error> {
+pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprFile, Error> {
     let ast = serde_yaml::from_reader(reader).map_err(|err| {
-        Error::without_violations(
-            filename.clone(),
-            format!("cannot parse {}: {}", filename.clone(), err),
-        )
+        Error::without_violations(filename, format!("cannot parse {}: {}", filename, err))
     })?;
 
-    let mut v = Validator::new(filename.clone());
+    let mut v = Validator::new(filename);
 
     let test_case_exprs = v
         .must_be_map(&ast)
@@ -128,20 +129,20 @@ pub fn parse(filename: String, reader: impl std::io::Read) -> Result<TestCaseExp
         Some(test_case_exprs) => {
             if v.violations.is_empty() {
                 Ok(TestCaseExprFile {
-                    filename: filename.clone(),
+                    filename: filename.to_string(),
                     test_case_exprs,
                 })
             } else {
                 Err(Error::with_violations(
                     filename,
-                    "parse error".to_string(),
+                    "parse error",
                     v.violations,
                 ))
             }
         }
         None => Err(Error::with_violations(
             filename,
-            "parse error".to_string(),
+            "parse error",
             v.violations,
         )),
     }
@@ -201,7 +202,7 @@ mod tests {
         const FILENAME: &str = "test.yaml";
         fn parse_error(violations: Vec<Violation>) -> Result<TestCaseExprFile, Error> {
             Err(Error::with_violations(
-                FILENAME.to_string(),
+                FILENAME,
                 "parse error".to_string(),
                 violations,
             ))
@@ -339,8 +340,7 @@ tests:
             #[case] input: &str,
             #[case] expected: Vec<TestCaseExprTemplate>,
         ) {
-            let filename = FILENAME.to_string();
-            let actual = parse(filename.clone(), input.as_bytes());
+            let actual = parse(FILENAME, input.as_bytes());
 
             assert_eq!(
                 actual,
@@ -377,8 +377,7 @@ tests:
             #[case] input: &str,
             #[case] violations: Vec<(&str, &str)>,
         ) {
-            let filename = FILENAME.to_string();
-            let actual = parse(filename, input.as_bytes());
+            let actual = parse(FILENAME, input.as_bytes());
             assert_eq!(
                 actual,
                 parse_error(

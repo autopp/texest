@@ -16,17 +16,17 @@ pub struct Validator {
 }
 
 impl Validator {
-    pub fn new(filename: String) -> Self {
+    pub fn new(filename: &str) -> Self {
         Self {
-            filename,
+            filename: filename.to_string(),
             paths: vec!["$".to_string()],
             violations: Vec::new(),
         }
     }
 
-    pub fn new_with_paths(filename: String, paths: Vec<String>) -> Self {
+    pub fn new_with_paths(filename: &str, paths: Vec<String>) -> Self {
         Self {
-            filename,
+            filename: filename.to_string(),
             paths,
             violations: Vec::new(),
         }
@@ -228,7 +228,7 @@ pub mod testutil {
     const FILENAME: &str = "test.yaml";
 
     pub fn new_validator() -> (Validator, impl Fn(&str, &str) -> Violation) {
-        let v = Validator::new(FILENAME.to_string());
+        let v = Validator::new(FILENAME);
 
         let violation = |path: &str, message: &str| -> Violation {
             Violation {
@@ -252,22 +252,22 @@ mod tests {
 
         #[test]
         fn with_one_call() {
-            let mut v = Validator::new(FILENAME.to_string());
-            let message = "error".to_string();
-            v.add_violation(message.clone());
+            let mut v = Validator::new(FILENAME);
+            let message = "error";
+            v.add_violation(message);
             assert_eq!(
                 v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
-                    message,
+                    message: message.to_string(),
                 }]
             );
         }
 
         #[test]
         fn with_two_calls() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let message1 = "error1";
             let message2 = "error2";
             v.add_violation(message1);
@@ -295,7 +295,7 @@ mod tests {
 
         #[test]
         fn appneds_path_prefix_in_callback() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
 
             let mut inner = "";
             let outer = v.in_path(":prefix1", |v| {
@@ -339,7 +339,7 @@ mod tests {
 
         #[test]
         fn be_equivalent_to_in_path_with_index() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let actual = v.in_index(1, |v| {
                 v.add_violation("error");
                 "result"
@@ -362,7 +362,7 @@ mod tests {
 
         #[test]
         fn be_equivalent_to_in_path_with_field() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let actual = v.in_field("field", |v| {
                 v.add_violation("error");
                 "result"
@@ -385,13 +385,13 @@ mod tests {
 
         #[test]
         fn when_no_path_returns_root_path() {
-            let v = Validator::new(FILENAME.to_string());
+            let v = Validator::new(FILENAME);
             assert_eq!(v.current_path(), "$".to_string());
         }
 
         #[test]
         fn when_path_pushed_returns_appended_path() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
 
             v.in_path(".x", |v| {
                 v.in_path(".y", |v| {
@@ -406,7 +406,7 @@ mod tests {
 
         #[test]
         fn returns_some_if_value_is_map() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             assert_eq!(v.may_be_map(&Value::Mapping(m.clone())), Some(&m));
@@ -415,7 +415,7 @@ mod tests {
 
         #[test]
         fn returns_none_if_value_is_not_map() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
             assert_eq!(v.may_be_map(&value), None);
@@ -428,7 +428,7 @@ mod tests {
 
         #[test]
         fn returns_some_if_value_is_map() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             assert_eq!(v.must_be_map(&Value::Mapping(m.clone())), Some(&m));
@@ -437,7 +437,7 @@ mod tests {
 
         #[test]
         fn returns_none_if_value_is_not_map() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
             assert_eq!(v.must_be_map(&value), None);
@@ -457,7 +457,7 @@ mod tests {
 
         #[test]
         fn returns_some_if_value_is_seq() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let s = Sequence::new();
 
             assert_eq!(v.must_be_seq(&Value::Sequence(s.clone())), Some(&s));
@@ -466,7 +466,7 @@ mod tests {
 
         #[test]
         fn returns_none_if_value_is_not_seq() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
             assert_eq!(v.must_be_seq(&value), None);
@@ -486,7 +486,7 @@ mod tests {
 
         #[test]
         fn returns_the_bool_when_value_is_bool() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::Bool(true);
 
             assert_eq!(v.must_be_bool(&value), Some(true));
@@ -495,7 +495,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_value_is_not_bool() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
             assert_eq!(v.must_be_bool(&value), None);
@@ -515,7 +515,7 @@ mod tests {
 
         #[test]
         fn returns_the_uint_when_value_is_uint() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::Number(42.into());
 
             assert_eq!(v.must_be_uint(&value), Some(42));
@@ -524,7 +524,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_value_is_not_uint() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::Number((-42).into());
 
             assert_eq!(v.must_be_uint(&value), None);
@@ -544,7 +544,7 @@ mod tests {
 
         #[test]
         fn returns_the_string_when_value_is_string() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::String("hello".to_string());
 
             assert_eq!(v.may_be_string(&value), Some("hello".to_string()));
@@ -553,7 +553,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_value_is_not_string() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::Bool(true);
 
             assert_eq!(v.may_be_string(&value), None);
@@ -566,7 +566,7 @@ mod tests {
 
         #[test]
         fn returns_the_string_when_value_is_string() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::String("hello".to_string());
 
             assert_eq!(v.must_be_string(&value), Some("hello".to_string()));
@@ -575,7 +575,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_value_is_not_string() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let value = Value::Bool(true);
 
             assert_eq!(v.must_be_string(&value), None);
@@ -595,7 +595,7 @@ mod tests {
 
         #[test]
         fn returns_qualifier_and_value_when_qualified_map() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::from("$name"), Value::from("value"));
             let m = Value::from(m);
@@ -608,7 +608,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_map_is_empty() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Value::from(Mapping::new());
 
             let actual = v.may_be_qualified(&m);
@@ -619,7 +619,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_map_contains_more_than_1_pairs() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::from("$name"), Value::from("value"));
             m.insert(Value::from("$foo"), Value::from("bar"));
@@ -633,7 +633,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_name_is_not_starting_with_dollar() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::from("name"), Value::from("value"));
             let m = Value::from(m);
@@ -646,7 +646,7 @@ mod tests {
 
         #[test]
         fn returns_none_when_given_is_not_map() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let given = Value::from("hello");
 
             let actual = v.may_be_qualified(&given);
@@ -661,7 +661,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_value_calls_callback_and_return_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::String("field".to_string()), Value::from(true));
 
@@ -684,7 +684,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_map_do_nothing() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.may_have(&m, "field", |v, _| {
@@ -701,7 +701,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_map_calls_callback_and_return_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             let inner = Mapping::new();
             m.insert(
@@ -728,7 +728,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_map_do_nothing() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.may_have_map(&m, "field", |v, _| {
@@ -741,7 +741,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_not_map_add_violation() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(
                 Value::String("field".to_string()),
@@ -769,7 +769,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_seq_calls_callback_and_return_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             let s = Sequence::new();
             m.insert(
@@ -796,7 +796,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_seq_do_nothing() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.may_have_seq(&m, "field", |v, _| {
@@ -809,7 +809,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_not_seq_add_violation() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(
                 Value::String("field".to_string()),
@@ -837,7 +837,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_seq_calls_callback_and_return_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             let s = Sequence::new();
             m.insert(
@@ -864,7 +864,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_seq_do_nothing() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.must_have_seq(&m, "field", |v, _| {
@@ -884,7 +884,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_not_seq_add_violation() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(
                 Value::String("field".to_string()),
@@ -912,7 +912,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_bool_returns_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::String("field".to_string()), Value::Bool(true));
 
@@ -924,7 +924,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_bool_returns_none() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.may_have_bool(&m, "field");
@@ -935,7 +935,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_not_bool_add_violation() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(
                 Value::String("field".to_string()),
@@ -961,7 +961,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_int_returns_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::String("field".to_string()), Value::Number(42.into()));
 
@@ -973,7 +973,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_int_returns_none() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.may_have_uint(&m, "field");
@@ -984,7 +984,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_not_int_add_violation() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(
                 Value::String("field".to_string()),
@@ -1010,7 +1010,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_string_returns_it() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(
                 Value::String("field".to_string()),
@@ -1025,7 +1025,7 @@ mod tests {
 
         #[test]
         fn when_map_dosent_contain_string_returns_none() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let m = Mapping::new();
 
             let actual = v.may_have_string(&m, "field");
@@ -1036,7 +1036,7 @@ mod tests {
 
         #[test]
         fn when_map_contains_not_string_add_violation() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let mut m = Mapping::new();
             m.insert(Value::String("field".to_string()), Value::Bool(true));
 
@@ -1059,7 +1059,7 @@ mod tests {
 
         #[test]
         fn when_all_succeeded_returns_result_vec() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let s: Sequence = vec![
                 Value::String("a".to_string()),
                 Value::String("b".to_string()),
@@ -1077,7 +1077,7 @@ mod tests {
 
         #[test]
         fn when_some_failed_returns_none() {
-            let mut v = Validator::new(FILENAME.to_string());
+            let mut v = Validator::new(FILENAME);
             let s: Sequence = vec![
                 Value::String("a".to_string()),
                 Value::Bool(true),

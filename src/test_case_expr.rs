@@ -41,10 +41,8 @@ pub fn eval_test_expr(
     stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
 ) -> Result<Vec<TestCase>, TestExprError> {
-    let mut v = Validator::new_with_paths(
-        test_case_expr.filename.clone(),
-        vec![test_case_expr.path.clone()],
-    );
+    let mut v =
+        Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
 
     let command: Vec<String> = v.in_field("command", |v| {
         test_case_expr
