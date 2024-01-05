@@ -78,13 +78,13 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             })
                             .unwrap_or((IndexMap::new(), IndexMap::new(), IndexMap::new()));
                         let env: Vec<(String, Expr)> = v.may_have_map(&test, "env", |v, env| {
-                            env.iter()
+                            env.into_iter()
                                 .filter_map(|(name, value)| {
                                     if !VAR_NAME_RE.is_match(name) {
                                         v.add_violation("should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)");
                                         return None
                                     }
-                                    Some((name.clone(), parse_expr(v, value)))
+                                    Some((name.to_string(), parse_expr(v, value)))
                                 })
                                 .collect::<Vec<_>>()
                         }).unwrap_or(vec![]);
@@ -147,9 +147,9 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
     }
 
     v.may_be_qualified(x)
-        .and_then(|(q, value)| match &*q {
+        .and_then(|(q, value)| match q {
             "env" => v.in_field(".$env", |v| {
-                v.may_be_string(&value).map(|name| Expr::EnvVar(name, None))
+                v.may_be_string(value).map(|name| Expr::EnvVar(name, None))
             }),
             "yaml" => Some(Expr::Yaml(value.clone())),
             "json" => Some(Expr::Json(value.clone())),
@@ -161,7 +161,7 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
 fn parse_expected(v: &mut Validator, m: &Map) -> IndexMap<String, Expr> {
     let mut result = IndexMap::<String, Expr>::new();
     m.iter().for_each(|(name, value)| {
-        result.insert(name.clone(), parse_expr(v, value));
+        result.insert(name.to_string(), parse_expr(v, value));
     });
     result
 }

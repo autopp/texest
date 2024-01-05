@@ -72,7 +72,7 @@ impl Validator {
             let mut m = Map::new();
             for (key, value) in original {
                 if let Some(key) = key.as_str() {
-                    m.insert(key.to_string(), value);
+                    m.insert(key, value);
                 } else {
                     self.add_violation(format!(
                         "should be string keyed map, but contains {:?}",
@@ -91,7 +91,7 @@ impl Validator {
                 let mut m = Map::new();
                 for (key, value) in original {
                     if let Some(key) = key.as_str() {
-                        m.insert(key.to_string(), value);
+                        m.insert(key, value);
                     } else {
                         self.add_violation(format!(
                             "should be string keyed map, but contains {:?}",
@@ -145,11 +145,11 @@ impl Validator {
         s.map(String::from)
     }
 
-    pub fn may_be_qualified<'a>(&mut self, x: &'a Value) -> Option<(String, &'a Value)> {
+    pub fn may_be_qualified<'a>(&mut self, x: &'a Value) -> Option<(&'a str, &'a Value)> {
         self.may_be_map(x).and_then(|m| {
             if m.len() == 1 {
                 let (key, value) = m.into_iter().next().unwrap();
-                key.strip_prefix('$').map(|name| (name.to_string(), value))
+                key.strip_prefix('$').map(|name| (name, value))
             } else {
                 None
             }
@@ -432,7 +432,7 @@ mod tests {
             let expected_value = 42.into();
             assert_eq!(
                 v.may_be_map(&Value::Mapping(m)),
-                Some(indexmap! { "answer".into() => &expected_value })
+                Some(indexmap! { "answer" => &expected_value })
             );
             assert_eq!(v.violations, vec![])
         }
@@ -479,7 +479,7 @@ mod tests {
             let expected_value = 42.into();
             assert_eq!(
                 v.must_be_map(&Value::Mapping(m)),
-                Some(indexmap! { "answer".into() => &expected_value})
+                Some(indexmap! { "answer" => &expected_value})
             );
             assert_eq!(v.violations, vec![])
         }
@@ -670,7 +670,7 @@ mod tests {
 
             let actual = v.may_be_qualified(&m);
 
-            assert_eq!(actual, Some(("name".to_string(), &Value::from("value"))));
+            assert_eq!(actual, Some(("name", &Value::from("value"))));
             assert_eq!(v.violations, vec![]);
         }
 
@@ -733,7 +733,7 @@ mod tests {
         fn when_map_contains_value_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
             let value = true.into();
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have(&m, "field", |v, x| {
                 assert_eq!(Value::from(true), *x);
@@ -780,11 +780,11 @@ mod tests {
             mapping.insert(Value::from("answer"), Value::from(42));
             let inner = mapping.into();
 
-            let m = indexmap! { "field".into() => &inner };
+            let m = indexmap! { "field" => &inner };
 
             let actual = v.may_have_map(&m, "field", |v, s_in_f| {
                 let expected_value = Value::from(42);
-                assert_eq!(*s_in_f, indexmap! { "answer".into() => &expected_value });
+                assert_eq!(*s_in_f, indexmap! { "answer" => &expected_value });
                 v.add_violation("error");
                 42
             });
@@ -817,7 +817,7 @@ mod tests {
         fn when_map_contains_not_map_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = "answer".into();
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_map(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -846,7 +846,7 @@ mod tests {
             let s: Sequence = vec![true.into()];
             let seq = s.clone().into();
 
-            let m = indexmap! { "field".into() => &seq };
+            let m = indexmap! { "field" => &seq };
 
             let actual = v.may_have_seq(&m, "field", |v, s_in_f| {
                 assert_eq!(&s, s_in_f);
@@ -882,7 +882,7 @@ mod tests {
         fn when_map_contains_not_seq_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = "answer".into();
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -910,7 +910,7 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let s = Sequence::new();
             let seq = s.clone().into();
-            let m = indexmap! { "field".into() => &seq };
+            let m = indexmap! { "field" => &seq };
 
             let actual = v.must_have_seq(&m, "field", |v, s_in_f| {
                 assert_eq!(&s, s_in_f);
@@ -953,7 +953,7 @@ mod tests {
         fn when_map_contains_not_seq_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = "answer".into();
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.must_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -980,7 +980,7 @@ mod tests {
         fn when_map_contains_bool_returns_it() {
             let mut v = Validator::new(FILENAME);
             let value = Value::from(true);
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_bool(&m, "field");
 
@@ -1003,7 +1003,7 @@ mod tests {
         fn when_map_contains_not_bool_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = "answer".into();
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_bool(&m, "field");
 
@@ -1028,7 +1028,7 @@ mod tests {
         fn when_map_contains_int_returns_it() {
             let mut v = Validator::new(FILENAME);
             let value = 42.into();
-            let m = indexmap! { "field".into() => &value};
+            let m = indexmap! { "field" => &value};
 
             let actual = v.may_have_uint(&m, "field");
 
@@ -1051,7 +1051,7 @@ mod tests {
         fn when_map_contains_not_int_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = "answer".into();
-            let m = indexmap! { "field".into() => &value };
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_uint(&m, "field");
 
