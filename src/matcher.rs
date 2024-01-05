@@ -7,7 +7,7 @@ use std::{any::Any, fmt::Debug};
 use crate::validator::Validator;
 
 pub trait Matcher<T>: Debug + PartialEq<dyn Any> {
-    fn matches(&self, actual: T) -> Result<(bool, String), String>;
+    fn matches(&self, actual: &T) -> Result<(bool, String), String>;
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
@@ -53,7 +53,7 @@ pub mod testutil {
     }
 
     impl<T: Debug> Matcher<T> for TestMatcher {
-        fn matches(&self, actual: T) -> Result<(bool, String), String> {
+        fn matches(&self, actual: &T) -> Result<(bool, String), String> {
             match self.kind {
                 Kind::Success => Ok((true, Self::success_message(actual))),
                 Kind::Failure => Ok((false, Self::failure_message(actual))),

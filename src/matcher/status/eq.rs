@@ -16,8 +16,8 @@ impl PartialEq<dyn Any> for EqMatcher {
 }
 
 impl Matcher<i32> for EqMatcher {
-    fn matches(&self, actual: i32) -> Result<(bool, String), String> {
-        let matched = self.expected == actual;
+    fn matches(&self, actual: &i32) -> Result<(bool, String), String> {
+        let matched = self.expected == *actual;
 
         Ok((
             matched,
@@ -63,7 +63,7 @@ mod tests {
     fn matches(#[case] given: i32, #[case] expected_matched: bool, #[case] expected_message: &str) {
         let m = EqMatcher { expected: 0 };
         assert_eq!(
-            m.matches(given),
+            m.matches(&given),
             Ok((expected_matched, expected_message.to_string()))
         );
     }

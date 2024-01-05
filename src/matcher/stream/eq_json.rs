@@ -1,4 +1,4 @@
-use std::{any::Any, ffi::OsString};
+use std::any::Any;
 
 use assert_json_diff::{assert_json_matches_no_panic, Config};
 
@@ -18,16 +18,17 @@ impl PartialEq<dyn Any> for EqJsonMatcher {
     }
 }
 
-impl Matcher<OsString> for EqJsonMatcher {
-    fn matches(&self, actual: OsString) -> Result<(bool, String), String> {
-        let actual_str = actual.to_str().ok_or_else(|| {
+impl Matcher<Vec<u8>> for EqJsonMatcher {
+    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+        let actual_str = String::from_utf8(actual.to_vec()).map_err(|_err| {
             format!(
                 "should be valid JSON string, but got \"{}\"",
-                actual.to_string_lossy()
+                String::from_utf8_lossy(actual)
             )
         })?;
 
-        let parsed: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(actual_str);
+        let parsed: Result<serde_json::Value, serde_json::Error> =
+            serde_json::from_str(&actual_str);
         if parsed.is_err() {
             return Ok((
                 false,
@@ -58,11 +59,11 @@ impl Matcher<OsString> for EqJsonMatcher {
 pub fn parse_eq_json_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<OsString> + 'static>> {
+) -> Option<Box<dyn Matcher<Vec<u8>> + 'static>> {
     v.must_be_string(x)
         .and_then(|original| match serde_json::from_str(&original) {
             Ok(expected) => {
-                let b: Box<dyn Matcher<OsString> + 'static> =
+                let b: Box<dyn Matcher<Vec<u8>> + 'static> =
                     Box::new(EqJsonMatcher { expected, original });
                 Some(b)
             }
@@ -116,15 +117,13 @@ mod tests {
         #[case] expected_matched: bool,
         #[case] expected_message: &str,
     ) {
-        let given: OsString = given.into();
-
         let original = r#"{"message": "hello", "nums": [1, 2]}"#;
         let m = EqJsonMatcher {
             original: original.into(),
             expected: serde_json::from_str(original).unwrap(),
         };
         assert_eq!(
-            m.matches(given),
+            m.matches(&given.as_bytes().to_vec()),
             Ok((expected_matched, expected_message.to_string()))
         );
     }

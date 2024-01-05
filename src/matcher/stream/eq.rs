@@ -1,10 +1,10 @@
-use std::{any::Any, ffi::OsString};
+use std::any::Any;
 
 use crate::{matcher::Matcher, validator::Validator};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqMatcher {
-    expected: OsString,
+    expected: Vec<u8>,
 }
 
 impl PartialEq<dyn Any> for EqMatcher {
@@ -15,19 +15,22 @@ impl PartialEq<dyn Any> for EqMatcher {
     }
 }
 
-impl Matcher<OsString> for EqMatcher {
-    fn matches(&self, actual: OsString) -> Result<(bool, String), String> {
-        let matched = self.expected == actual;
+impl Matcher<Vec<u8>> for EqMatcher {
+    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+        let matched = self.expected == *actual;
 
         Ok((
             matched,
             if matched {
-                format!("should not be \"{}\", but got it", actual.to_string_lossy())
+                format!(
+                    "should not be \"{}\", but got it",
+                    String::from_utf8_lossy(actual)
+                )
             } else {
                 format!(
                     "should be \"{}\", but got \"{}\"",
-                    self.expected.to_string_lossy(),
-                    actual.to_string_lossy()
+                    String::from_utf8_lossy(&self.expected),
+                    String::from_utf8_lossy(actual)
                 )
             },
         ))
@@ -41,9 +44,9 @@ impl Matcher<OsString> for EqMatcher {
 pub fn parse_eq_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<OsString> + 'static>> {
+) -> Option<Box<dyn Matcher<Vec<u8>> + 'static>> {
     v.must_be_string(x).map(|expected| {
-        let b: Box<dyn Matcher<OsString> + 'static> = Box::new(EqMatcher {
+        let b: Box<dyn Matcher<Vec<u8>> + 'static> = Box::new(EqMatcher {
             expected: expected.into(),
         });
         b
@@ -63,12 +66,11 @@ mod tests {
         #[case] expected_matched: bool,
         #[case] expected_message: &str,
     ) {
-        let given: OsString = given.into();
         let m = EqMatcher {
             expected: "hello".into(),
         };
         assert_eq!(
-            m.matches(given),
+            m.matches(&given.as_bytes().to_vec()),
             Ok((expected_matched, expected_message.to_string()))
         );
     }
@@ -90,7 +92,7 @@ mod tests {
             assert_eq!(
                 casted,
                 Some(&EqMatcher {
-                    expected: OsString::from("hello")
+                    expected: "hello".into()
                 })
             );
         }
