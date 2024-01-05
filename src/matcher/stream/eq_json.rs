@@ -1,5 +1,7 @@
 use std::{any::Any, ffi::OsString};
 
+use assert_json_diff::{assert_json_matches_no_panic, Config};
+
 use crate::{matcher::Matcher, validator::Validator};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,17 +38,30 @@ impl Matcher<OsString> for EqJsonMatcher {
         let actual_json = parsed.unwrap();
         let matched = self.expected == actual_json;
 
-        Ok((
-            matched,
-            if matched {
-                format!("should not be {} as JSON, but got it", self.original)
-            } else {
-                format!(
-                    "should be {} as JSON, but got {}",
-                    self.original, actual_str
-                )
-            },
-        ))
+        match assert_json_matches_no_panic(
+            &actual_json,
+            &self.expected,
+            Config::new(assert_json_diff::CompareMode::Strict),
+        ) {
+            Ok(_) => Ok((
+                true,
+                format!("should not be {} as JSON, but got it", self.original),
+            )),
+            Err(msg) => Ok((false, msg)),
+        }
+        // };
+
+        // Ok((
+        //     matched,
+        //     if matched {
+        //         format!("should not be {} as JSON, but got it", self.original)
+        //     } else {
+        //         format!(
+        //             "should be {} as JSON, but got {}",
+        //             self.original, actual_str
+        //         )
+        //     },
+        // ))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -89,17 +104,21 @@ mod tests {
     #[case(
         r#"{"message": "world", "nums": [1, 2]}"#,
         false,
-        r#"should be {"message": "hello", "nums": [1, 2]} as JSON, but got {"message": "world", "nums": [1, 2]}"#
+        r#"json atoms at path ".message" are not equal:
+    lhs:
+        "world"
+    rhs:
+        "hello""#
     )]
     #[case(
         r#"{"message": "hello", "nums": [1, 2, 3]}"#,
         false,
-        r#"should be {"message": "hello", "nums": [1, 2]} as JSON, but got {"message": "hello", "nums": [1, 2, 3]}"#
+        r#"json atom at path ".nums[2]" is missing from rhs"#
     )]
     #[case(
         r#"{"message": "hello", "nums": [1, 2], "passed": true}"#,
         false,
-        r#"should be {"message": "hello", "nums": [1, 2]} as JSON, but got {"message": "hello", "nums": [1, 2], "passed": true}"#
+        r#"json atom at path ".passed" is missing from rhs"#
     )]
     #[case(
         r#"{"message": "hello", "nums": [1, 2],"#,
