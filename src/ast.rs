@@ -26,9 +26,9 @@ impl Ast for Value {
     }
 }
 
-pub type Map = IndexMap<String, Value>;
+pub type Map<'a> = IndexMap<String, &'a Value>;
 
-impl Ast for Map {
+impl<'a> Ast for Map<'a> {
     fn type_name(&self) -> String {
         "map".to_string()
     }
