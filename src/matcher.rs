@@ -139,11 +139,11 @@ pub mod testutil {
     pub const PARSE_ERROR_MATCHER: &str = "parse_error";
 
     pub fn new_test_matcher_registry<T: Debug>() -> MatcherRegistry<T> {
-        let mut r = MatcherRegistry::new("test".to_string());
-        r.register(SUCCESS_MATCHER.to_string(), parse_success);
-        r.register(FAILURE_MATCHER.to_string(), parse_failure);
-        r.register(ERROR_MATCHER.to_string(), parse_error);
-        r.register(PARSE_ERROR_MATCHER.to_string(), error_parse);
+        let mut r = MatcherRegistry::new("test");
+        r.register(SUCCESS_MATCHER, parse_success);
+        r.register(FAILURE_MATCHER, parse_failure);
+        r.register(ERROR_MATCHER, parse_error);
+        r.register(PARSE_ERROR_MATCHER, error_parse);
         r
     }
 }

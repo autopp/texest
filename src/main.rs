@@ -56,10 +56,10 @@ fn main() {
 
     // Check duplicated filenames
     let mut unique_files = HashSet::<&String>::new();
-    let mut duplicated: Vec<String> = vec![];
+    let mut duplicated: Vec<&str> = vec![];
     args.files.iter().for_each(|filename| {
         if !unique_files.insert(filename) {
-            duplicated.push(filename.clone());
+            duplicated.push(filename);
         }
     });
 
@@ -73,13 +73,13 @@ fn main() {
         .iter()
         .map(|filename| {
             if filename == "-" {
-                parse("<stdin>".to_string(), std::io::stdin())
+                parse("<stdin>", std::io::stdin())
             } else {
                 let file = File::open(filename).unwrap_or_else(|err| {
                     eprintln!("cannot open {}: {}", filename, err);
                     std::process::exit(EXIT_CODE_INVALID_INPUT)
                 });
-                parse(filename.clone(), file)
+                parse(filename, file)
             }
         })
         .partition(Result::is_ok);

@@ -11,7 +11,7 @@ pub enum Expr {
 pub fn eval_expr(expr: &Expr) -> Result<Value, String> {
     match expr {
         Expr::Literal(v) => Ok(v.clone()),
-        Expr::EnvVar(name, default) => std::env::var_os(name.clone())
+        Expr::EnvVar(name, default) => std::env::var_os(name)
             .map(|value| Value::from(value.to_string_lossy()))
             .or_else(|| default.clone().map(Value::from))
             .ok_or_else(|| format!("env var {} is not defined", name)),

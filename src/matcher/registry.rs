@@ -8,15 +8,15 @@ pub struct MatcherRegistry<T> {
 }
 
 impl<T> MatcherRegistry<T> {
-    pub fn new(target: String) -> Self {
+    pub fn new(target: &str) -> Self {
         Self {
-            target,
+            target: target.to_string(),
             matchers: HashMap::new(),
         }
     }
 
-    pub fn register(&mut self, name: String, parser: MatcherParser<T>) {
-        if self.matchers.insert(name.clone(), parser).is_some() {
+    pub fn register(&mut self, name: &str, parser: MatcherParser<T>) {
+        if self.matchers.insert(name.to_string(), parser).is_some() {
             panic!("matcher {} is already registered", name);
         }
     }
@@ -40,18 +40,18 @@ impl<T> MatcherRegistry<T> {
 pub type StatusMatcherRegistry = MatcherRegistry<i32>;
 
 pub fn new_status_matcher_registry() -> StatusMatcherRegistry {
-    let mut r = StatusMatcherRegistry::new("status".to_string());
-    r.register("eq".to_string(), status::parse_eq_matcher);
+    let mut r = StatusMatcherRegistry::new("status");
+    r.register("eq", status::parse_eq_matcher);
     r
 }
 
 pub type StreamMatcherRegistry = MatcherRegistry<OsString>;
 
 pub fn new_stream_matcher_registry() -> StreamMatcherRegistry {
-    let mut r = StreamMatcherRegistry::new("stream".to_string());
-    r.register("eq".to_string(), stream::parse_eq_matcher);
-    r.register("contain".to_string(), stream::parse_contain_matcher);
-    r.register("eq_json".to_string(), stream::parse_eq_json_matcher);
+    let mut r = StreamMatcherRegistry::new("stream");
+    r.register("eq", stream::parse_eq_matcher);
+    r.register("contain", stream::parse_contain_matcher);
+    r.register("eq_json", stream::parse_eq_json_matcher);
     r
 }
 
@@ -75,10 +75,10 @@ mod tests {
 
             #[test]
             fn success_case() {
-                let mut r = MatcherRegistry::<i32>::new("test".to_string());
-                r.register(NAME.to_string(), parse_success);
+                let mut r = MatcherRegistry::<i32>::new("test");
+                r.register(NAME, parse_success);
 
-                let mut v = Validator::new("test.yaml".to_string());
+                let mut v = Validator::new("test.yaml");
                 let param = Value::from(true);
 
                 let actual = r.parse(NAME, &mut v, &param);
@@ -91,9 +91,9 @@ mod tests {
 
             #[test]
             fn failure_case_undefined() {
-                let r = MatcherRegistry::<i32>::new("test".to_string());
+                let r = MatcherRegistry::<i32>::new("test");
 
-                let mut v = Validator::new("test.yaml".to_string());
+                let mut v = Validator::new("test.yaml");
                 let param = Value::from(true);
 
                 let actual = r.parse(NAME, &mut v, &param);
@@ -111,10 +111,10 @@ mod tests {
 
             #[test]
             fn failure_case_parse_error() {
-                let mut r = MatcherRegistry::<i32>::new("test".to_string());
-                r.register(NAME.to_string(), error_parse);
+                let mut r = MatcherRegistry::<i32>::new("test");
+                r.register(NAME, error_parse);
 
-                let mut v = Validator::new("test.yaml".to_string());
+                let mut v = Validator::new("test.yaml");
                 let param = Value::from(true);
 
                 let actual = r.parse(NAME, &mut v, &param);
