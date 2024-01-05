@@ -36,7 +36,6 @@ impl Matcher<OsString> for EqJsonMatcher {
         }
 
         let actual_json = parsed.unwrap();
-        let matched = self.expected == actual_json;
 
         match assert_json_matches_no_panic(
             &actual_json,
@@ -49,19 +48,6 @@ impl Matcher<OsString> for EqJsonMatcher {
             )),
             Err(msg) => Ok((false, msg)),
         }
-        // };
-
-        // Ok((
-        //     matched,
-        //     if matched {
-        //         format!("should not be {} as JSON, but got it", self.original)
-        //     } else {
-        //         format!(
-        //             "should be {} as JSON, but got {}",
-        //             self.original, actual_str
-        //         )
-        //     },
-        // ))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
