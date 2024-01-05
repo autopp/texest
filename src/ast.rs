@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use serde_yaml::Value;
 
 pub trait Ast {
@@ -22,6 +23,14 @@ impl Ast for Value {
             Value::Mapping(_) => "map".to_string(),
             Value::Tagged(t) => t.value.type_name(),
         }
+    }
+}
+
+pub type Map<'a> = IndexMap<&'a str, &'a Value>;
+
+impl<'a> Ast for Map<'a> {
+    fn type_name(&self) -> String {
+        "map".to_string()
     }
 }
 

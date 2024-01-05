@@ -1,5 +1,5 @@
-use crate::ast::Ast;
-use serde_yaml::{Mapping, Sequence, Value};
+use crate::ast::{Ast, Map};
+use serde_yaml::{Sequence, Value};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Violation {
@@ -67,16 +67,46 @@ impl Validator {
         self.in_path(format!(".{}", field.as_ref()), f)
     }
 
-    pub fn may_be_map<'a>(&mut self, x: &'a Value) -> Option<&'a Mapping> {
-        x.as_mapping()
+    pub fn may_be_map<'a>(&mut self, x: &'a Value) -> Option<Map<'a>> {
+        x.as_mapping().and_then(|original| {
+            let mut m = Map::new();
+            for (key, value) in original {
+                if let Some(key) = key.as_str() {
+                    m.insert(key, value);
+                } else {
+                    self.add_violation(format!(
+                        "should be string keyed map, but contains {:?}",
+                        key
+                    ));
+                    return None;
+                }
+            }
+            Some(m)
+        })
     }
 
-    pub fn must_be_map<'a>(&mut self, x: &'a Value) -> Option<&'a Mapping> {
-        let m = x.as_mapping();
-        if m.is_none() {
-            self.add_violation(format!("should be map, but is {}", x.type_name()));
+    pub fn must_be_map<'a>(&mut self, x: &'a Value) -> Option<Map<'a>> {
+        match x.as_mapping() {
+            Some(original) => {
+                let mut m = Map::new();
+                for (key, value) in original {
+                    if let Some(key) = key.as_str() {
+                        m.insert(key, value);
+                    } else {
+                        self.add_violation(format!(
+                            "should be string keyed map, but contains {:?}",
+                            key
+                        ));
+                        return None;
+                    }
+                }
+                Some(m)
+            }
+            None => {
+                self.add_violation(format!("should be map, but is {}", x.type_name()));
+                None
+            }
         }
-        m
     }
 
     pub fn must_be_seq<'a>(&mut self, x: &'a Value) -> Option<&'a Sequence> {
@@ -115,14 +145,11 @@ impl Validator {
         s.map(String::from)
     }
 
-    pub fn may_be_qualified<'a>(&mut self, x: &'a Value) -> Option<(String, &'a Value)> {
+    pub fn may_be_qualified<'a>(&mut self, x: &'a Value) -> Option<(&'a str, &'a Value)> {
         self.may_be_map(x).and_then(|m| {
             if m.len() == 1 {
-                let (key, value) = m.iter().next().unwrap();
-
-                key.as_str()
-                    .and_then(|s| s.strip_prefix('$'))
-                    .map(|name| (name.to_string(), value))
+                let (key, value) = m.into_iter().next().unwrap();
+                key.strip_prefix('$').map(|name| (name, value))
             } else {
                 None
             }
@@ -131,25 +158,24 @@ impl Validator {
 
     pub fn may_have<'a, T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &'a Value) -> T>(
         &mut self,
-        m: &'a Mapping,
+        m: &'a Map,
         field: S,
         mut f: F,
     ) -> Option<T> {
-        m.get(&Value::String(field.as_ref().to_string()))
+        m.get(field.as_ref())
             .map(|x| self.in_field(field, |v| f(v, x)))
     }
 
-    pub fn may_have_map<'a, T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &'a Mapping) -> T>(
+    pub fn may_have_map<T, S: AsRef<str> + Copy, F: FnMut(&mut Validator, &Map) -> T>(
         &mut self,
-        m: &'a Mapping,
+        m: &Map,
         field: S,
         mut f: F,
     ) -> Option<T> {
-        m.get(&Value::String(field.as_ref().to_string()))
-            .and_then(|x| {
-                self.in_field(field, |v| v.must_be_map(x))
-                    .map(|m| self.in_field(field, |v| f(v, m)))
-            })
+        m.get(field.as_ref()).and_then(|x| {
+            self.in_field(field, |v| v.must_be_map(x))
+                .map(|m| self.in_field(field, |v| f(v, &m)))
+        })
     }
 
     pub fn may_have_seq<
@@ -159,15 +185,14 @@ impl Validator {
         F: FnMut(&mut Validator, &'a Sequence) -> T,
     >(
         &mut self,
-        m: &'a Mapping,
+        m: &'a Map,
         field: S,
         mut f: F,
     ) -> Option<T> {
-        m.get(&Value::String(field.as_ref().to_string()))
-            .and_then(|x| {
-                self.in_field(field, |v| v.must_be_seq(x))
-                    .map(|seq| self.in_field(field, |v| f(v, seq)))
-            })
+        m.get(field.as_ref()).and_then(|x| {
+            self.in_field(field, |v| v.must_be_seq(x))
+                .map(|seq| self.in_field(field, |v| f(v, seq)))
+        })
     }
 
     pub fn must_have_seq<
@@ -177,24 +202,24 @@ impl Validator {
         F: FnMut(&mut Validator, &'a Sequence) -> T,
     >(
         &mut self,
-        m: &'a Mapping,
+        m: &'a Map,
         field: S,
         f: F,
     ) -> Option<T> {
-        if !m.contains_key(&Value::String(field.as_ref().to_string())) {
+        if !m.contains_key(field.as_ref()) {
             self.add_violation(format!("should have .{} as seq", field.as_ref()));
             return None;
         }
         self.may_have_seq(m, field, f)
     }
 
-    pub fn may_have_bool<S: AsRef<str> + Copy>(&mut self, m: &Mapping, field: S) -> Option<bool> {
-        m.get(&Value::String(field.as_ref().to_string()))
+    pub fn may_have_bool<S: AsRef<str> + Copy>(&mut self, m: &Map, field: S) -> Option<bool> {
+        m.get(field.as_ref())
             .and_then(|x| self.in_field(field, |v| v.must_be_bool(x)))
     }
 
-    pub fn may_have_uint<S: AsRef<str> + Copy>(&mut self, m: &Mapping, field: S) -> Option<u64> {
-        m.get(&Value::String(field.as_ref().to_string()))
+    pub fn may_have_uint<S: AsRef<str> + Copy>(&mut self, m: &Map, field: S) -> Option<u64> {
+        m.get(field.as_ref())
             .and_then(|x| self.in_field(field, |v| v.must_be_uint(x)))
     }
 
@@ -393,15 +418,40 @@ mod tests {
     }
 
     mod may_be_map {
+        use indexmap::indexmap;
+        use serde_yaml::Mapping;
+
         use super::*;
 
         #[test]
         fn returns_some_if_value_is_map() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let mut m = Mapping::new();
+            m.insert(Value::from("answer"), 42.into());
 
-            assert_eq!(v.may_be_map(&Value::Mapping(m.clone())), Some(&m));
+            let expected_value = 42.into();
+            assert_eq!(
+                v.may_be_map(&Value::Mapping(m)),
+                Some(indexmap! { "answer" => &expected_value })
+            );
             assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_if_value_is_not_string_key_map() {
+            let mut v = Validator::new(FILENAME);
+            let mut m = Mapping::new();
+            m.insert(Value::from(42), Value::from("answer"));
+
+            assert_eq!(v.may_be_map(&Value::Mapping(m)), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be string keyed map, but contains Number(42)".to_string(),
+                }]
+            )
         }
 
         #[test]
@@ -415,15 +465,40 @@ mod tests {
     }
 
     mod must_be_map {
+        use indexmap::indexmap;
+        use serde_yaml::Mapping;
+
         use super::*;
 
         #[test]
         fn returns_some_if_value_is_map() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let mut m = Mapping::new();
+            m.insert(Value::from("answer"), 42.into());
 
-            assert_eq!(v.must_be_map(&Value::Mapping(m.clone())), Some(&m));
+            let expected_value = 42.into();
+            assert_eq!(
+                v.must_be_map(&Value::Mapping(m)),
+                Some(indexmap! { "answer" => &expected_value})
+            );
             assert_eq!(v.violations, vec![])
+        }
+
+        #[test]
+        fn returns_none_if_value_is_not_string_key_map() {
+            let mut v = Validator::new(FILENAME);
+            let mut m = Mapping::new();
+            m.insert(Value::from(42), Value::from("answer"));
+
+            assert_eq!(v.must_be_map(&Value::Mapping(m)), None);
+            assert_eq!(
+                v.violations,
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should be string keyed map, but contains Number(42)".to_string(),
+                }]
+            )
         }
 
         #[test]
@@ -582,6 +657,8 @@ mod tests {
     }
 
     mod may_be_qualified {
+        use serde_yaml::Mapping;
+
         use super::*;
 
         #[test]
@@ -593,7 +670,7 @@ mod tests {
 
             let actual = v.may_be_qualified(&m);
 
-            assert_eq!(actual, Some(("name".to_string(), &Value::from("value"))));
+            assert_eq!(actual, Some(("name", &Value::from("value"))));
             assert_eq!(v.violations, vec![]);
         }
 
@@ -648,13 +725,15 @@ mod tests {
     }
 
     mod may_have {
+        use indexmap::indexmap;
+
         use super::*;
 
         #[test]
         fn when_map_contains_value_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(Value::String("field".to_string()), Value::from(true));
+            let value = true.into();
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have(&m, "field", |v, x| {
                 assert_eq!(Value::from(true), *x);
@@ -676,7 +755,7 @@ mod tests {
         #[test]
         fn when_map_dosent_contain_map_do_nothing() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let m = indexmap! {};
 
             let actual = v.may_have(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -688,20 +767,24 @@ mod tests {
     }
 
     mod may_have_map {
+        use indexmap::indexmap;
+        use serde_yaml::Mapping;
+
         use super::*;
 
         #[test]
         fn when_map_contains_map_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            let inner = Mapping::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::Mapping(inner.clone()),
-            );
+            let mut mapping = Mapping::new();
+
+            mapping.insert(Value::from("answer"), Value::from(42));
+            let inner = mapping.into();
+
+            let m = indexmap! { "field" => &inner };
 
             let actual = v.may_have_map(&m, "field", |v, s_in_f| {
-                assert_eq!(&inner, s_in_f);
+                let expected_value = Value::from(42);
+                assert_eq!(*s_in_f, indexmap! { "answer" => &expected_value });
                 v.add_violation("error");
                 42
             });
@@ -720,7 +803,7 @@ mod tests {
         #[test]
         fn when_map_dosent_contain_map_do_nothing() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let m = indexmap! {};
 
             let actual = v.may_have_map(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -733,11 +816,8 @@ mod tests {
         #[test]
         fn when_map_contains_not_map_add_violation() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::String("answer".to_string()),
-            );
+            let value = "answer".into();
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_map(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -756,17 +836,17 @@ mod tests {
     }
 
     mod may_have_seq {
+        use indexmap::indexmap;
+
         use super::*;
 
         #[test]
         fn when_map_contains_seq_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            let s = Sequence::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::Sequence(s.clone()),
-            );
+            let s: Sequence = vec![true.into()];
+            let seq = s.clone().into();
+
+            let m = indexmap! { "field" => &seq };
 
             let actual = v.may_have_seq(&m, "field", |v, s_in_f| {
                 assert_eq!(&s, s_in_f);
@@ -788,7 +868,7 @@ mod tests {
         #[test]
         fn when_map_dosent_contain_seq_do_nothing() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let m = indexmap! {};
 
             let actual = v.may_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -801,11 +881,8 @@ mod tests {
         #[test]
         fn when_map_contains_not_seq_add_violation() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::String("answer".to_string()),
-            );
+            let value = "answer".into();
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -824,17 +901,16 @@ mod tests {
     }
 
     mod must_have_seq {
+        use indexmap::indexmap;
+
         use super::*;
 
         #[test]
         fn when_map_contains_seq_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
             let s = Sequence::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::Sequence(s.clone()),
-            );
+            let seq = s.clone().into();
+            let m = indexmap! { "field" => &seq };
 
             let actual = v.must_have_seq(&m, "field", |v, s_in_f| {
                 assert_eq!(&s, s_in_f);
@@ -856,7 +932,7 @@ mod tests {
         #[test]
         fn when_map_dosent_contain_seq_do_nothing() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let m = indexmap! {};
 
             let actual = v.must_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -876,11 +952,8 @@ mod tests {
         #[test]
         fn when_map_contains_not_seq_add_violation() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::String("answer".to_string()),
-            );
+            let value = "answer".into();
+            let m = indexmap! { "field" => &value };
 
             let actual = v.must_have_seq(&m, "field", |v, _| {
                 v.add_violation("error");
@@ -899,13 +972,15 @@ mod tests {
     }
 
     mod may_have_bool {
+        use indexmap::indexmap;
+
         use super::*;
 
         #[test]
         fn when_map_contains_bool_returns_it() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(Value::String("field".to_string()), Value::Bool(true));
+            let value = Value::from(true);
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_bool(&m, "field");
 
@@ -916,7 +991,7 @@ mod tests {
         #[test]
         fn when_map_dosent_contain_bool_returns_none() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let m = indexmap! {};
 
             let actual = v.may_have_bool(&m, "field");
 
@@ -927,11 +1002,8 @@ mod tests {
         #[test]
         fn when_map_contains_not_bool_add_violation() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::String("answer".to_string()),
-            );
+            let value = "answer".into();
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_bool(&m, "field");
 
@@ -948,13 +1020,15 @@ mod tests {
     }
 
     mod may_have_uint {
+        use indexmap::indexmap;
+
         use super::*;
 
         #[test]
         fn when_map_contains_int_returns_it() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(Value::String("field".to_string()), Value::Number(42.into()));
+            let value = 42.into();
+            let m = indexmap! { "field" => &value};
 
             let actual = v.may_have_uint(&m, "field");
 
@@ -965,7 +1039,7 @@ mod tests {
         #[test]
         fn when_map_dosent_contain_int_returns_none() {
             let mut v = Validator::new(FILENAME);
-            let m = Mapping::new();
+            let m = indexmap! {};
 
             let actual = v.may_have_uint(&m, "field");
 
@@ -976,11 +1050,8 @@ mod tests {
         #[test]
         fn when_map_contains_not_int_add_violation() {
             let mut v = Validator::new(FILENAME);
-            let mut m = Mapping::new();
-            m.insert(
-                Value::String("field".to_string()),
-                Value::String("answer".to_string()),
-            );
+            let value = "answer".into();
+            let m = indexmap! { "field" => &value };
 
             let actual = v.may_have_uint(&m, "field");
 
