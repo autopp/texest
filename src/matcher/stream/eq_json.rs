@@ -80,6 +80,7 @@ pub fn parse_eq_json_matcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use rstest::rstest;
 
     #[rstest]
@@ -123,8 +124,8 @@ mod tests {
             expected: serde_json::from_str(original).unwrap(),
         };
         assert_eq!(
+            Ok((expected_matched, expected_message.to_string())),
             m.matches(&given.as_bytes().to_vec()),
-            Ok((expected_matched, expected_message.to_string()))
         );
     }
 
@@ -133,6 +134,7 @@ mod tests {
 
         use super::*;
         use crate::validator::testutil::new_validator;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn success_case() {
@@ -149,11 +151,11 @@ mod tests {
                 serde_json::Value::String("hello".to_string()),
             );
             assert_eq!(
-                casted,
                 Some(&EqJsonMatcher {
                     original: original.into(),
                     expected: serde_json::Value::Object(m)
-                })
+                }),
+                casted,
             );
         }
 
@@ -174,8 +176,8 @@ mod tests {
 
             assert!(actual.is_none(), "{}", title);
             assert_eq!(
-                v.violations,
                 vec![violation("", expected_message)],
+                v.violations,
                 "{}",
                 title
             );

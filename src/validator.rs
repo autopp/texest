@@ -265,19 +265,21 @@ mod tests {
 
     mod add_violation {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn with_one_call() {
             let mut v = Validator::new(FILENAME);
             let message = "error";
             v.add_violation(message);
+
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: message.to_string(),
-                }]
+                }],
+                v.violations,
             );
         }
 
@@ -289,7 +291,6 @@ mod tests {
             v.add_violation(message1);
             v.add_violation(message2);
             assert_eq!(
-                v.violations,
                 vec![
                     Violation {
                         filename: FILENAME.to_string(),
@@ -301,13 +302,15 @@ mod tests {
                         path: "$".to_string(),
                         message: message2.to_string(),
                     }
-                ]
+                ],
+                v.violations,
             );
         }
     }
 
     mod in_path {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn appneds_path_prefix_in_callback() {
@@ -324,11 +327,10 @@ mod tests {
                 "outer-result"
             });
 
-            assert_eq!(outer, "outer-result");
-            assert_eq!(inner, "inner-result");
+            assert_eq!("outer-result", outer);
+            assert_eq!("inner-result", inner);
 
             assert_eq!(
-                v.violations,
                 vec![
                     Violation {
                         filename: FILENAME.to_string(),
@@ -345,13 +347,15 @@ mod tests {
                         path: "$:prefix1".to_string(),
                         message: "error3".to_string(),
                     }
-                ]
+                ],
+                v.violations,
             )
         }
     }
 
     mod in_index {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn be_equivalent_to_in_path_with_index() {
@@ -361,20 +365,21 @@ mod tests {
                 "result"
             });
 
-            assert_eq!(actual, "result");
+            assert_eq!("result", actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$[1]".to_string(),
                     message: "error".to_string(),
-                }]
+                }],
+                v.violations,
             );
         }
     }
 
     mod in_field {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn be_equivalent_to_in_path_with_field() {
@@ -384,25 +389,26 @@ mod tests {
                 "result"
             });
 
-            assert_eq!(actual, "result");
+            assert_eq!("result", actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "error".to_string(),
-                }]
+                }],
+                v.violations,
             );
         }
     }
 
     mod current_path {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_no_path_returns_root_path() {
             let v = Validator::new(FILENAME);
-            assert_eq!(v.current_path(), "$".to_string());
+            assert_eq!("$".to_string(), v.current_path());
         }
 
         #[test]
@@ -411,7 +417,7 @@ mod tests {
 
             v.in_path(".x", |v| {
                 v.in_path(".y", |v| {
-                    assert_eq!(v.current_path(), "$.x.y".to_string());
+                    assert_eq!("$.x.y".to_string(), v.current_path());
                 })
             });
         }
@@ -422,6 +428,7 @@ mod tests {
         use serde_yaml::Mapping;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_some_if_value_is_map() {
@@ -431,10 +438,10 @@ mod tests {
 
             let expected_value = 42.into();
             assert_eq!(
+                Some(indexmap! { "answer" => &expected_value }),
                 v.may_be_map(&Value::Mapping(m)),
-                Some(indexmap! { "answer" => &expected_value })
             );
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -443,14 +450,14 @@ mod tests {
             let mut m = Mapping::new();
             m.insert(Value::from(42), Value::from("answer"));
 
-            assert_eq!(v.may_be_map(&Value::Mapping(m)), None);
+            assert_eq!(None, v.may_be_map(&Value::Mapping(m)));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be string keyed map, but contains Number(42)".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -459,8 +466,8 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
-            assert_eq!(v.may_be_map(&value), None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, v.may_be_map(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
     }
 
@@ -469,6 +476,7 @@ mod tests {
         use serde_yaml::Mapping;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_some_if_value_is_map() {
@@ -478,10 +486,10 @@ mod tests {
 
             let expected_value = 42.into();
             assert_eq!(
+                Some(indexmap! { "answer" => &expected_value}),
                 v.must_be_map(&Value::Mapping(m)),
-                Some(indexmap! { "answer" => &expected_value})
             );
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -490,14 +498,14 @@ mod tests {
             let mut m = Mapping::new();
             m.insert(Value::from(42), Value::from("answer"));
 
-            assert_eq!(v.must_be_map(&Value::Mapping(m)), None);
+            assert_eq!(None, v.must_be_map(&Value::Mapping(m)));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be string keyed map, but contains Number(42)".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -506,28 +514,29 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
-            assert_eq!(v.must_be_map(&value), None);
+            assert_eq!(None, v.must_be_map(&value));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be map, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
 
     mod must_be_seq {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_some_if_value_is_seq() {
             let mut v = Validator::new(FILENAME);
             let s = Sequence::new();
 
-            assert_eq!(v.must_be_seq(&Value::Sequence(s.clone())), Some(&s));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some(&s), v.must_be_seq(&Value::Sequence(s.clone())));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -535,28 +544,29 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
-            assert_eq!(v.must_be_seq(&value), None);
+            assert_eq!(None, v.must_be_seq(&value));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be seq, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
 
     mod must_be_bool {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_the_bool_when_value_is_bool() {
             let mut v = Validator::new(FILENAME);
             let value = Value::Bool(true);
 
-            assert_eq!(v.must_be_bool(&value), Some(true));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some(true), v.must_be_bool(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -564,28 +574,29 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::String("string".to_string());
 
-            assert_eq!(v.must_be_bool(&value), None);
+            assert_eq!(None, v.must_be_bool(&value));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be bool, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
 
     mod must_be_uint {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_the_uint_when_value_is_uint() {
             let mut v = Validator::new(FILENAME);
             let value = Value::Number(42.into());
 
-            assert_eq!(v.must_be_uint(&value), Some(42));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some(42), v.must_be_uint(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -593,28 +604,29 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::Number((-42).into());
 
-            assert_eq!(v.must_be_uint(&value), None);
+            assert_eq!(None, v.must_be_uint(&value));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be uint, but is int".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
 
     mod may_be_string {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_the_string_when_value_is_string() {
             let mut v = Validator::new(FILENAME);
             let value = Value::String("hello".to_string());
 
-            assert_eq!(v.may_be_string(&value), Some("hello".to_string()));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some("hello".to_string()), v.may_be_string(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -622,21 +634,22 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::Bool(true);
 
-            assert_eq!(v.may_be_string(&value), None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, v.may_be_string(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
     }
 
     mod must_be_string {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_the_string_when_value_is_string() {
             let mut v = Validator::new(FILENAME);
             let value = Value::String("hello".to_string());
 
-            assert_eq!(v.must_be_string(&value), Some("hello".to_string()));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some("hello".to_string()), v.must_be_string(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -644,14 +657,14 @@ mod tests {
             let mut v = Validator::new(FILENAME);
             let value = Value::Bool(true);
 
-            assert_eq!(v.must_be_string(&value), None);
+            assert_eq!(None, v.must_be_string(&value));
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be string, but is bool".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
@@ -660,6 +673,7 @@ mod tests {
         use serde_yaml::Mapping;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn returns_qualifier_and_value_when_qualified_map() {
@@ -670,8 +684,8 @@ mod tests {
 
             let actual = v.may_be_qualified(&m);
 
-            assert_eq!(actual, Some(("name", &Value::from("value"))));
-            assert_eq!(v.violations, vec![]);
+            assert_eq!(Some(("name", &Value::from("value"))), actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
         #[test]
@@ -681,8 +695,8 @@ mod tests {
 
             let actual = v.may_be_qualified(&m);
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![]);
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
         #[test]
@@ -695,8 +709,8 @@ mod tests {
 
             let actual = v.may_be_qualified(&m);
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![]);
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
         #[test]
@@ -708,8 +722,8 @@ mod tests {
 
             let actual = v.may_be_qualified(&m);
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![]);
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
         #[test]
@@ -719,8 +733,8 @@ mod tests {
 
             let actual = v.may_be_qualified(&given);
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![]);
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations);
         }
     }
 
@@ -728,6 +742,7 @@ mod tests {
         use indexmap::indexmap;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_map_contains_value_calls_callback_and_return_it() {
@@ -741,14 +756,14 @@ mod tests {
                 42
             });
 
-            assert_eq!(actual, Some(42));
+            assert_eq!(Some(42), actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "error".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -761,8 +776,8 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
     }
 
@@ -771,6 +786,7 @@ mod tests {
         use serde_yaml::Mapping;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_map_contains_map_calls_callback_and_return_it() {
@@ -789,14 +805,14 @@ mod tests {
                 42
             });
 
-            assert_eq!(actual, Some(42));
+            assert_eq!(Some(42), actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "error".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -809,8 +825,8 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -823,14 +839,14 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be map, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
@@ -839,6 +855,7 @@ mod tests {
         use indexmap::indexmap;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_map_contains_seq_calls_callback_and_return_it() {
@@ -849,19 +866,19 @@ mod tests {
             let m = indexmap! { "field" => &seq };
 
             let actual = v.may_have_seq(&m, "field", |v, s_in_f| {
-                assert_eq!(&s, s_in_f);
+                assert_eq!(s_in_f, &s);
                 v.add_violation("error");
                 42
             });
 
-            assert_eq!(actual, Some(42));
+            assert_eq!(Some(42), actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "error".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -874,8 +891,8 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -888,14 +905,14 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be seq, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
@@ -904,6 +921,7 @@ mod tests {
         use indexmap::indexmap;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_map_contains_seq_calls_callback_and_return_it() {
@@ -913,19 +931,19 @@ mod tests {
             let m = indexmap! { "field" => &seq };
 
             let actual = v.must_have_seq(&m, "field", |v, s_in_f| {
-                assert_eq!(&s, s_in_f);
+                assert_eq!(s_in_f, &s);
                 v.add_violation("error");
                 42
             });
 
-            assert_eq!(actual, Some(42));
+            assert_eq!(Some(42), actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "error".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -938,14 +956,14 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should have .field as seq".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
 
@@ -959,14 +977,14 @@ mod tests {
                 v.add_violation("error");
             });
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be seq, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
@@ -975,6 +993,7 @@ mod tests {
         use indexmap::indexmap;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_map_contains_bool_returns_it() {
@@ -984,8 +1003,8 @@ mod tests {
 
             let actual = v.may_have_bool(&m, "field");
 
-            assert_eq!(actual, Some(true));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some(true), actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -995,8 +1014,8 @@ mod tests {
 
             let actual = v.may_have_bool(&m, "field");
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -1007,14 +1026,14 @@ mod tests {
 
             let actual = v.may_have_bool(&m, "field");
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be bool, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
@@ -1023,6 +1042,7 @@ mod tests {
         use indexmap::indexmap;
 
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_map_contains_int_returns_it() {
@@ -1032,8 +1052,8 @@ mod tests {
 
             let actual = v.may_have_uint(&m, "field");
 
-            assert_eq!(actual, Some(42));
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Some(42), actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -1043,8 +1063,8 @@ mod tests {
 
             let actual = v.may_have_uint(&m, "field");
 
-            assert_eq!(actual, None);
-            assert_eq!(v.violations, vec![])
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -1055,20 +1075,21 @@ mod tests {
 
             let actual = v.may_have_uint(&m, "field");
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be uint, but is string".to_string(),
-                }]
+                }],
+                v.violations,
             )
         }
     }
 
     mod map_seq {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn when_all_succeeded_returns_result_vec() {
@@ -1082,10 +1103,10 @@ mod tests {
             let actual = v.map_seq(&s, |v, x| v.must_be_string(x).map(|s| s.to_uppercase()));
 
             assert_eq!(
+                Some(vec!["A".to_string(), "B".to_string(), "C".to_string()]),
                 actual,
-                Some(vec!["A".to_string(), "B".to_string(), "C".to_string()])
             );
-            assert_eq!(v.violations, vec![])
+            assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
         #[test]
@@ -1100,9 +1121,8 @@ mod tests {
 
             let actual = v.map_seq(&s, |v, x| v.must_be_string(x).map(|s| s.to_uppercase()));
 
-            assert_eq!(actual, None);
+            assert_eq!(None, actual);
             assert_eq!(
-                v.violations,
                 vec![
                     Violation {
                         filename: FILENAME.to_string(),
@@ -1114,7 +1134,8 @@ mod tests {
                         path: "$[3]".to_string(),
                         message: "should be string, but is uint".to_string(),
                     }
-                ]
+                ],
+                v.violations,
             )
         }
     }

@@ -88,6 +88,7 @@ mod tests {
 
     mod execute_command {
         use super::*;
+        use pretty_assertions::assert_eq;
         use rstest::*;
 
         #[rstest]
@@ -121,12 +122,12 @@ mod tests {
             .await;
 
             assert_eq!(
-                actual,
                 Ok(Output {
                     status,
                     stdout: stdout.into(),
                     stderr: stderr.into()
-                })
+                }),
+                actual,
             );
         }
     }

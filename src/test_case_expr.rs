@@ -283,6 +283,7 @@ mod tests {
 
         use super::*;
         use indexmap::indexmap;
+        use pretty_assertions::assert_eq;
         use rstest::rstest;
         use serde_yaml::Value;
 
@@ -457,7 +458,7 @@ mod tests {
 
             let actual = eval_test_expr(&status_mr, &stream_mr, &given.build());
 
-            assert_eq!(actual, Ok(expected), "{}", title);
+            assert_eq!(Ok(expected), actual, "{}", title);
         }
 
         #[rstest]
@@ -627,10 +628,10 @@ mod tests {
             let actual = eval_test_expr(&status_mr, &stream_mr, &given.build());
 
             assert_eq!(
-                actual,
                 Err(TestExprError {
                     violations: expected_violations
                 }),
+                actual,
                 "{}",
                 title
             );

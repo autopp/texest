@@ -182,6 +182,7 @@ mod tests {
 
         use super::*;
         use indexmap::indexmap;
+        use pretty_assertions::assert_eq;
         use rstest::rstest;
         use serde_yaml::Value;
 
@@ -329,11 +330,11 @@ tests:
             let actual = parse(FILENAME, input.as_bytes());
 
             assert_eq!(
-                actual,
                 Ok(TestCaseExprFile {
                     filename: FILENAME.to_string(),
                     test_case_exprs: expected.into_iter().map(|x| x.build()).collect()
                 }),
+                actual,
                 "{}",
                 title
             )
@@ -365,13 +366,13 @@ tests:
         ) {
             let actual = parse(FILENAME, input.as_bytes());
             assert_eq!(
-                actual,
                 parse_error(
                     violations
                         .iter()
                         .map(|(path, message)| violation(path, message))
                         .collect()
                 ),
+                actual,
                 "{}",
                 title
             )
