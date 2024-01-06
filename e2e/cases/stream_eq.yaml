@@ -46,5 +46,8 @@ tests:
                 failures:
                   - subject: stdout
                     messages:
-                      - "should be \"goodbye\n\", but got \"hello\n\""
+                      - |
+                        not equals:
 
+                        -goodbye
+                        +hello

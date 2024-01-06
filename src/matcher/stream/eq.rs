@@ -1,5 +1,7 @@
 use std::any::Any;
 
+use similar::TextDiff;
+
 use crate::{matcher::Matcher, validator::Validator};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -17,23 +19,30 @@ impl PartialEq<dyn Any> for EqMatcher {
 
 impl Matcher<Vec<u8>> for EqMatcher {
     fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
-        let matched = self.expected == *actual;
-
-        Ok((
-            matched,
-            if matched {
+        if actual == &self.expected {
+            Ok((
+                true,
                 format!(
                     "should not be \"{}\", but got it",
                     String::from_utf8_lossy(actual)
-                )
-            } else {
-                format!(
-                    "should be \"{}\", but got \"{}\"",
-                    String::from_utf8_lossy(&self.expected),
-                    String::from_utf8_lossy(actual)
-                )
-            },
-        ))
+                ),
+            ))
+        } else {
+            let diff_message = TextDiff::from_lines(&self.expected, actual)
+                .iter_all_changes()
+                .map(|change| {
+                    let tag = match change.tag() {
+                        similar::ChangeTag::Delete => "-",
+                        similar::ChangeTag::Insert => "+",
+                        similar::ChangeTag::Equal => " ",
+                    };
+                    format!("{}{}", tag, change)
+                })
+                .collect::<Vec<_>>()
+                .join("");
+
+            Ok((false, format!("not equals:\n\n{}", diff_message)))
+        }
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -60,7 +69,7 @@ mod tests {
 
     #[rstest]
     #[case("hello", true, "should not be \"hello\", but got it")]
-    #[case("goodbye", false, "should be \"hello\", but got \"goodbye\"")]
+    #[case("goodbye", false, "not equals:\n\n-hello\n+goodbye\n")]
     fn matches(
         #[case] given: &str,
         #[case] expected_matched: bool,
