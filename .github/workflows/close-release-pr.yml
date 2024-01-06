@@ -31,7 +31,7 @@ jobs:
 
           if [ "${{ github.event.pull_request.merged }}" = true ]; then
             echo "Publish ${TAG} from draft"
-            gh release edit "${TAG}"
+            gh release edit "${TAG}" --draft=false
           else
             echo "Delete ${TAG}"
             gh release delete "${TAG}"
