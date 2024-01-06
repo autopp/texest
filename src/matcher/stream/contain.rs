@@ -30,9 +30,8 @@ impl Matcher<Vec<u8>> for ContainMatcher {
                 )
             } else {
                 format!(
-                    "should contain \"{}\", but got \"{}\"",
-                    String::from_utf8_lossy(&self.expected),
-                    String::from_utf8_lossy(actual)
+                    "should contain \"{}\", but don't contain it",
+                    String::from_utf8_lossy(&self.expected)
                 )
             },
         ))
@@ -65,7 +64,7 @@ mod tests {
     #[case(
         "goodbye world",
         false,
-        "should contain \"hello\", but got \"goodbye world\""
+        "should contain \"hello\", but don't contain it"
     )]
     fn matches(
         #[case] given: &str,
