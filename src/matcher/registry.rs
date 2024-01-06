@@ -58,8 +58,10 @@ pub fn new_stream_matcher_registry() -> StreamMatcherRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     mod matcher_registry {
         use super::*;
+
         mod parse {
             use std::vec;
 
@@ -69,6 +71,7 @@ mod tests {
             };
 
             use super::*;
+            use pretty_assertions::assert_eq;
             use serde_yaml::Value;
 
             const NAME: &str = "some";
@@ -85,7 +88,7 @@ mod tests {
 
                 assert_eq!(
                     actual.unwrap().as_ref(),
-                    TestMatcher::new_success::<i32>(param).as_any()
+                    TestMatcher::new_success::<i32>(param).as_any(),
                 )
             }
 
@@ -100,12 +103,12 @@ mod tests {
 
                 assert!(actual.is_none());
                 assert_eq!(
-                    v.violations,
                     vec![Violation {
                         filename: "test.yaml".to_string(),
                         path: "$".to_string(),
                         message: format!("test matcher {} is not defined", NAME)
-                    },]
+                    }],
+                    v.violations,
                 )
             }
 
@@ -121,12 +124,12 @@ mod tests {
 
                 assert!(actual.is_none());
                 assert_eq!(
-                    v.violations,
                     vec![Violation {
                         filename: "test.yaml".to_string(),
                         path: format!("$.{}", NAME),
                         message: VIOLATION_MESSAGE.to_string()
-                    },]
+                    }],
+                    v.violations,
                 )
             }
         }

@@ -217,6 +217,7 @@ mod tests {
 
         mod run {
             use super::*;
+            use pretty_assertions::assert_eq;
             use rstest::rstest;
             use serde_yaml::Value;
 
@@ -286,10 +287,10 @@ mod tests {
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCase,
-                #[case] expeceted: TestResult,
+                #[case] expected: TestResult,
             ) {
                 let actual = given.run();
-                assert_eq!(actual, expeceted, "{}", title);
+                assert_eq!(expected, actual, "{}", title);
             }
 
             #[test]
@@ -305,9 +306,9 @@ mod tests {
 
                 let actual = given.run();
 
-                assert_eq!(actual.name, DEFAULT_NAME.clone());
-                assert_eq!(actual.failures.len(), 1);
-                assert_eq!(actual.failures.get("exec").unwrap().len(), 1);
+                assert_eq!(DEFAULT_NAME.clone(), actual.name);
+                assert_eq!(1, actual.failures.len());
+                assert_eq!(1, actual.failures.get("exec").unwrap().len());
             }
         }
     }
@@ -316,6 +317,7 @@ mod tests {
         use super::*;
         use indexmap::indexmap;
         use once_cell::sync::Lazy;
+        use pretty_assertions::assert_eq;
         use rstest::rstest;
 
         #[rstest]
@@ -340,7 +342,7 @@ mod tests {
         fn len(#[case] results: Vec<TestResult>, #[case] expected: usize) {
             let summary = TestResultSummary { results };
 
-            assert_eq!(summary.len(), expected);
+            assert_eq!(expected, summary.len());
         }
 
         static PASSED1: Lazy<TestResult> = Lazy::new(|| TestResult {
@@ -392,7 +394,7 @@ mod tests {
             let summary = TestResultSummary { results };
             let actual = summary.classified_results();
 
-            assert_eq!(actual, expected);
+            assert_eq!(expected, actual);
         }
 
         #[rstest]
@@ -402,7 +404,7 @@ mod tests {
         fn is_all_passed(#[case] results: Vec<TestResult>, #[case] expected: bool) {
             let summary = TestResultSummary { results };
 
-            assert_eq!(summary.is_all_passed(), expected);
+            assert_eq!(expected, summary.is_all_passed());
         }
     }
 }

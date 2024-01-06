@@ -65,6 +65,7 @@ pub fn parse_eq_matcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use rstest::rstest;
 
     #[rstest]
@@ -79,8 +80,8 @@ mod tests {
             expected: "hello".into(),
         };
         assert_eq!(
+            Ok((expected_matched, expected_message.to_string())),
             m.matches(&given.as_bytes().to_vec()),
-            Ok((expected_matched, expected_message.to_string()))
         );
     }
 
@@ -89,6 +90,7 @@ mod tests {
 
         use super::*;
         use crate::validator::testutil::new_validator;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn success_case() {
@@ -99,10 +101,10 @@ mod tests {
             let casted: Option<&EqMatcher> = actual.as_any().downcast_ref();
 
             assert_eq!(
-                casted,
                 Some(&EqMatcher {
                     expected: "hello".into()
-                })
+                }),
+                casted,
             );
         }
 
@@ -118,8 +120,8 @@ mod tests {
 
             assert!(actual.is_none(), "{}", title);
             assert_eq!(
-                v.violations,
                 vec![violation("", expected_message)],
+                v.violations,
                 "{}",
                 title
             );

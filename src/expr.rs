@@ -46,6 +46,7 @@ mod tests {
     use crate::ast::testuitl::mapping;
 
     use super::*;
+    use pretty_assertions::assert_eq;
     use rstest::*;
     use serde_yaml::Value;
 
@@ -67,6 +68,6 @@ mod tests {
         set_var(ENV_VAR_NAME, ENV_VAR_VALUE);
 
         let actual = eval_expr(&expr);
-        assert_eq!(actual, expected, "{}", title);
+        assert_eq!(expected, actual, "{}", title);
     }
 }
