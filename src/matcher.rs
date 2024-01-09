@@ -68,7 +68,7 @@ pub mod testutil {
 
     impl TestMatcher {
         pub fn new_success<T: Debug>(param: Value) -> Box<dyn Matcher<T>> {
-            let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
+            let b: Box<dyn Matcher<T>> = Box::new(TestMatcher {
                 kind: Kind::Success,
                 param,
             });
@@ -76,7 +76,7 @@ pub mod testutil {
         }
 
         pub fn new_failure<T: Debug>(param: Value) -> Box<dyn Matcher<T>> {
-            let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
+            let b: Box<dyn Matcher<T>> = Box::new(TestMatcher {
                 kind: Kind::Failure,
                 param,
             });
@@ -84,7 +84,7 @@ pub mod testutil {
         }
 
         pub fn new_error<T: Debug>(param: Value) -> Box<dyn Matcher<T>> {
-            let b: Box<dyn Matcher<T> + 'static> = Box::new(TestMatcher {
+            let b: Box<dyn Matcher<T>> = Box::new(TestMatcher {
                 kind: Kind::Error,
                 param,
             });

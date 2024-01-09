@@ -59,12 +59,11 @@ impl Matcher<Vec<u8>> for EqJsonMatcher {
 pub fn parse_eq_json_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<Vec<u8>> + 'static>> {
+) -> Option<Box<dyn Matcher<Vec<u8>>>> {
     v.must_be_string(x)
         .and_then(|original| match serde_json::from_str(&original) {
             Ok(expected) => {
-                let b: Box<dyn Matcher<Vec<u8>> + 'static> =
-                    Box::new(EqJsonMatcher { expected, original });
+                let b: Box<dyn Matcher<Vec<u8>>> = Box::new(EqJsonMatcher { expected, original });
                 Some(b)
             }
             _ => {
