@@ -53,9 +53,9 @@ impl Matcher<Vec<u8>> for EqMatcher {
 pub fn parse_eq_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<Vec<u8>> + 'static>> {
+) -> Option<Box<dyn Matcher<Vec<u8>>>> {
     v.must_be_string(x).map(|expected| {
-        let b: Box<dyn Matcher<Vec<u8>> + 'static> = Box::new(EqMatcher {
+        let b: Box<dyn Matcher<Vec<u8>>> = Box::new(EqMatcher {
             expected: expected.into(),
         });
         b

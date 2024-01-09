@@ -34,10 +34,7 @@ impl Matcher<i32> for EqMatcher {
     }
 }
 
-pub fn parse_eq_matcher(
-    v: &mut Validator,
-    x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<i32> + 'static>> {
+pub fn parse_eq_matcher(v: &mut Validator, x: &serde_yaml::Value) -> Option<Box<dyn Matcher<i32>>> {
     v.must_be_uint(x).and_then(|expected| {
         i32::try_from(expected)
             .map_err(|err| {
@@ -46,7 +43,7 @@ pub fn parse_eq_matcher(
             })
             .ok()
             .map(|expected| {
-                let b: Box<dyn Matcher<i32> + 'static> = Box::new(EqMatcher { expected });
+                let b: Box<dyn Matcher<i32>> = Box::new(EqMatcher { expected });
                 b
             })
     })
