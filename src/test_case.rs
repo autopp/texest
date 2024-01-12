@@ -147,7 +147,7 @@ impl TestCase {
                 })
                 .collect::<Vec<_>>(),
             Status::Signal(signal) => vec![format!("signaled with {}", signal)],
-            Status::Timeout => vec![format!("timed out")],
+            Status::Timeout => vec![format!("timed out ({} sec)", self.timeout.as_secs())],
         };
 
         let stdout = output.stdout.as_bytes().to_vec();
@@ -283,7 +283,7 @@ mod tests {
             TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is timed out",
             given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCase,

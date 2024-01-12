@@ -28,5 +28,4 @@ tests:
                 failures:
                   - subject: status
                     messages:
-                      - 'timed out'
-
+                      - 'timed out (0 sec)'
