@@ -93,7 +93,7 @@ impl PartialEq for TestCase {
             .iter()
             .zip(other.status_matchers.iter())
             .all(|(self_status_matcher, other_status_matcher)| {
-                self_status_matcher.eq(other_status_matcher.as_any())
+                self_status_matcher == other_status_matcher
             })
     }
 }

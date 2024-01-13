@@ -1,18 +1,10 @@
-use std::any::Any;
-
 use crate::{matcher::Matcher, validator::Validator};
+
+use super::STATUS_MATCHER_TAG;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqMatcher {
     expected: i32,
-}
-
-impl PartialEq<dyn Any> for EqMatcher {
-    fn eq(&self, other: &dyn Any) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.expected == other.expected)
-    }
 }
 
 impl Matcher<i32> for EqMatcher {
@@ -29,8 +21,12 @@ impl Matcher<i32> for EqMatcher {
         ))
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
+        (
+            STATUS_MATCHER_TAG,
+            "eq",
+            serde_yaml::to_value(self.expected).unwrap(),
+        )
     }
 }
 
@@ -78,10 +74,9 @@ mod tests {
             let (mut v, _) = new_validator();
             let x = serde_yaml::to_value(0).unwrap();
             let actual = parse_eq_matcher(&mut v, &x).unwrap();
+            let expected: Box<dyn Matcher<i32>> = Box::new(EqMatcher { expected: 0 });
 
-            let casted: Option<&EqMatcher> = actual.as_any().downcast_ref();
-
-            assert_eq!(Some(&EqMatcher { expected: 0 }), casted);
+            assert_eq!(&expected, &actual);
         }
 
         #[rstest]

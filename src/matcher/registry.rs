@@ -85,11 +85,9 @@ mod tests {
                 let param = Value::from(true);
 
                 let actual = r.parse(NAME, &mut v, &param);
+                let expected = TestMatcher::new_success::<i32>(param);
 
-                assert_eq!(
-                    actual.unwrap().as_ref(),
-                    TestMatcher::new_success::<i32>(param).as_any(),
-                )
+                assert_eq!(&expected, &actual.unwrap())
             }
 
             #[test]

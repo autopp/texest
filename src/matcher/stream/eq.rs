@@ -1,20 +1,12 @@
-use std::any::Any;
-
 use similar::TextDiff;
 
 use crate::{matcher::Matcher, validator::Validator};
 
+use super::STREAM_MATCHER_TAG;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqMatcher {
     expected: Vec<u8>,
-}
-
-impl PartialEq<dyn Any> for EqMatcher {
-    fn eq(&self, other: &dyn Any) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.expected == other.expected)
-    }
 }
 
 impl Matcher<Vec<u8>> for EqMatcher {
@@ -45,8 +37,12 @@ impl Matcher<Vec<u8>> for EqMatcher {
         }
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
+    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
+        (
+            STREAM_MATCHER_TAG,
+            "eq",
+            serde_yaml::to_value(&self.expected).unwrap(),
+        )
     }
 }
 
@@ -97,15 +93,11 @@ mod tests {
             let (mut v, _) = new_validator();
             let x = serde_yaml::to_value("hello").unwrap();
             let actual = parse_eq_matcher(&mut v, &x).unwrap();
+            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(EqMatcher {
+                expected: "hello".into(),
+            });
 
-            let casted: Option<&EqMatcher> = actual.as_any().downcast_ref();
-
-            assert_eq!(
-                Some(&EqMatcher {
-                    expected: "hello".into()
-                }),
-                casted,
-            );
+            assert_eq!(&expected, &actual);
         }
 
         #[rstest]
