@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use assert_json_diff::{assert_json_matches_no_panic, Config};
 
 use crate::{matcher::Matcher, validator::Validator};
@@ -10,14 +8,6 @@ use super::STREAM_MATCHER_TAG;
 pub struct EqJsonMatcher {
     expected: serde_json::Value,
     original: String,
-}
-
-impl PartialEq<dyn Any> for EqJsonMatcher {
-    fn eq(&self, other: &dyn Any) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.expected == other.expected)
-    }
 }
 
 impl Matcher<Vec<u8>> for EqJsonMatcher {
@@ -51,10 +41,6 @@ impl Matcher<Vec<u8>> for EqJsonMatcher {
             )),
             Err(msg) => Ok((false, msg)),
         }
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 
     fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
@@ -152,20 +138,16 @@ mod tests {
             let x = serde_yaml::to_value(original).unwrap();
             let actual = parse_eq_json_matcher(&mut v, &x).unwrap();
 
-            let casted: Option<&EqJsonMatcher> = actual.as_any().downcast_ref();
-
             let mut m = serde_json::Map::new();
             m.insert(
                 "message".to_string(),
                 serde_json::Value::String("hello".to_string()),
             );
-            assert_eq!(
-                Some(&EqJsonMatcher {
-                    original: original.into(),
-                    expected: serde_json::Value::Object(m)
-                }),
-                casted,
-            );
+            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(EqJsonMatcher {
+                original: original.into(),
+                expected: serde_json::Value::Object(m),
+            });
+            assert_eq!(&expected, &actual);
         }
 
         #[rstest]

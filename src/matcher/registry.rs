@@ -66,10 +66,7 @@ mod tests {
             use std::vec;
 
             use crate::{
-                matcher::{
-                    testutil::{error_parse, parse_success, TestMatcher, VIOLATION_MESSAGE},
-                    Matcher,
-                },
+                matcher::testutil::{error_parse, parse_success, TestMatcher, VIOLATION_MESSAGE},
                 validator::{Validator, Violation},
             };
 

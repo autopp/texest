@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::{matcher::Matcher, validator::Validator};
 
 use super::STATUS_MATCHER_TAG;
@@ -7,14 +5,6 @@ use super::STATUS_MATCHER_TAG;
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqMatcher {
     expected: i32,
-}
-
-impl PartialEq<dyn Any> for EqMatcher {
-    fn eq(&self, other: &dyn Any) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.expected == other.expected)
-    }
 }
 
 impl Matcher<i32> for EqMatcher {
@@ -29,10 +19,6 @@ impl Matcher<i32> for EqMatcher {
                 format!("should be {}, but got {}", self.expected, actual)
             },
         ))
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 
     fn serialize(&self) -> (&str, &str, serde_yaml::Value) {

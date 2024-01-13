@@ -2,13 +2,12 @@ mod registry;
 mod status;
 mod stream;
 
-use std::{any::Any, fmt::Debug};
+use std::fmt::Debug;
 
 use crate::validator::Validator;
 
 pub trait Matcher<T>: Debug {
     fn matches(&self, actual: &T) -> Result<(bool, String), String>;
-    fn as_any(&self) -> &dyn std::any::Any;
     fn serialize(&self) -> (&str, &str, serde_yaml::Value);
 }
 
@@ -28,7 +27,7 @@ pub use registry::{
 
 #[cfg(test)]
 pub mod testutil {
-    use std::{any::Any, fmt::Debug};
+    use std::fmt::Debug;
 
     use serde_yaml::Value;
 
@@ -51,14 +50,6 @@ pub mod testutil {
         pub param: Value,
     }
 
-    impl PartialEq<dyn Any> for TestMatcher {
-        fn eq(&self, other: &dyn Any) -> bool {
-            other
-                .downcast_ref::<Self>()
-                .is_some_and(|other| self.kind == other.kind && self.param == other.param)
-        }
-    }
-
     impl<T: Debug> Matcher<T> for TestMatcher {
         fn matches(&self, actual: &T) -> Result<(bool, String), String> {
             match self.kind {
@@ -66,10 +57,6 @@ pub mod testutil {
                 Kind::Failure => Ok((false, Self::failure_message(actual))),
                 Kind::Error => Err(Self::error_message(actual)),
             }
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
         }
 
         fn serialize(&self) -> (&str, &str, serde_yaml::Value) {

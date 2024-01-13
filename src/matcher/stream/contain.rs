@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::{matcher::Matcher, validator::Validator};
 
 use super::STREAM_MATCHER_TAG;
@@ -7,14 +5,6 @@ use super::STREAM_MATCHER_TAG;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContainMatcher {
     expected: Vec<u8>,
-}
-
-impl PartialEq<dyn Any> for ContainMatcher {
-    fn eq(&self, other: &dyn Any) -> bool {
-        other
-            .downcast_ref::<Self>()
-            .is_some_and(|other| self.expected == other.expected)
-    }
 }
 
 impl Matcher<Vec<u8>> for ContainMatcher {
@@ -37,10 +27,6 @@ impl Matcher<Vec<u8>> for ContainMatcher {
                 )
             },
         ))
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 
     fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
@@ -104,14 +90,10 @@ mod tests {
             let x = Value::from("hello");
             let actual = parse_contain_matcher(&mut v, &x).unwrap();
 
-            let casted: Option<&ContainMatcher> = actual.as_any().downcast_ref();
-
-            assert_eq!(
-                Some(&ContainMatcher {
-                    expected: "hello".into()
-                }),
-                casted,
-            );
+            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(ContainMatcher {
+                expected: "hello".into(),
+            });
+            assert_eq!(&expected, &actual);
         }
 
         #[rstest]
