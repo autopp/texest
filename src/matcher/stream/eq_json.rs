@@ -4,6 +4,8 @@ use assert_json_diff::{assert_json_matches_no_panic, Config};
 
 use crate::{matcher::Matcher, validator::Validator};
 
+use super::STREAM_MATCHER_TAG;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqJsonMatcher {
     expected: serde_json::Value,
@@ -53,6 +55,14 @@ impl Matcher<Vec<u8>> for EqJsonMatcher {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
+        (
+            STREAM_MATCHER_TAG,
+            "eq_json",
+            serde_yaml::to_value(&self.expected).unwrap(),
+        )
     }
 }
 

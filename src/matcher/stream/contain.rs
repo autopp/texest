@@ -2,6 +2,8 @@ use std::any::Any;
 
 use crate::{matcher::Matcher, validator::Validator};
 
+use super::STREAM_MATCHER_TAG;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContainMatcher {
     expected: Vec<u8>,
@@ -39,6 +41,14 @@ impl Matcher<Vec<u8>> for ContainMatcher {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
+        (
+            STREAM_MATCHER_TAG,
+            "contain",
+            serde_yaml::to_value(&self.expected).unwrap(),
+        )
     }
 }
 

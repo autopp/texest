@@ -4,6 +4,8 @@ use similar::TextDiff;
 
 use crate::{matcher::Matcher, validator::Validator};
 
+use super::STREAM_MATCHER_TAG;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqMatcher {
     expected: Vec<u8>,
@@ -47,6 +49,14 @@ impl Matcher<Vec<u8>> for EqMatcher {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
+        (
+            STREAM_MATCHER_TAG,
+            "eq",
+            serde_yaml::to_value(&self.expected).unwrap(),
+        )
     }
 }
 

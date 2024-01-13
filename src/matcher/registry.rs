@@ -66,7 +66,10 @@ mod tests {
             use std::vec;
 
             use crate::{
-                matcher::testutil::{error_parse, parse_success, TestMatcher, VIOLATION_MESSAGE},
+                matcher::{
+                    testutil::{error_parse, parse_success, TestMatcher, VIOLATION_MESSAGE},
+                    Matcher,
+                },
                 validator::{Validator, Violation},
             };
 
@@ -85,11 +88,9 @@ mod tests {
                 let param = Value::from(true);
 
                 let actual = r.parse(NAME, &mut v, &param);
+                let expected = TestMatcher::new_success::<i32>(param);
 
-                assert_eq!(
-                    actual.unwrap().as_ref(),
-                    TestMatcher::new_success::<i32>(param).as_any(),
-                )
+                assert_eq!(&expected, &actual.unwrap())
             }
 
             #[test]

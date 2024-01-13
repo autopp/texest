@@ -6,9 +6,16 @@ use std::{any::Any, fmt::Debug};
 
 use crate::validator::Validator;
 
-pub trait Matcher<T>: Debug + PartialEq<dyn Any> {
+pub trait Matcher<T>: Debug {
     fn matches(&self, actual: &T) -> Result<(bool, String), String>;
     fn as_any(&self) -> &dyn std::any::Any;
+    fn serialize(&self) -> (&str, &str, serde_yaml::Value);
+}
+
+impl<T> PartialEq for dyn Matcher<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.serialize() == other.serialize()
+    }
 }
 
 pub type MatcherParser<T> =
@@ -63,6 +70,14 @@ pub mod testutil {
 
         fn as_any(&self) -> &dyn std::any::Any {
             self
+        }
+
+        fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
+            match self.kind {
+                Kind::Success => ("test", "success", self.param.clone()),
+                Kind::Failure => ("test", "failure", self.param.clone()),
+                Kind::Error => ("test", "error", self.param.clone()),
+            }
         }
     }
 
