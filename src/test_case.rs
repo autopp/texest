@@ -202,6 +202,76 @@ impl TestCase {
 }
 
 #[cfg(test)]
+mod testutil {
+    use crate::matcher::Matcher;
+    use std::time::Duration;
+
+    use super::TestCase;
+
+    pub const DEFAULT_NAME: &str = "test";
+    pub const DEFAULT_FILENAME: &str = "test.yaml";
+    pub const DEFAULT_PATH: &str = "$.tests[0]";
+    pub const DEFAULT_TIMEOUT: u64 = 10;
+
+    pub struct TestCaseTemplate {
+        pub name: &'static str,
+        pub filename: &'static str,
+        pub path: &'static str,
+        pub command: Vec<&'static str>,
+        pub stdin: &'static str,
+        pub env: Vec<(&'static str, &'static str)>,
+        pub timeout: u64,
+        pub tee_stdout: bool,
+        pub tee_stderr: bool,
+        pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
+        pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+        pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+    }
+
+    impl TestCaseTemplate {
+        pub fn build(self) -> TestCase {
+            TestCase {
+                name: self.name.to_string(),
+                filename: self.filename.to_string(),
+                path: self.path.to_string(),
+                command: self.command.iter().map(|x| x.to_string()).collect(),
+                stdin: self.stdin.to_string(),
+                env: self
+                    .env
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                timeout: Duration::from_secs(self.timeout),
+                tee_stdout: self.tee_stdout,
+                tee_stderr: self.tee_stderr,
+                status_matchers: self.status_matchers,
+                stdout_matchers: self.stdout_matchers,
+                stderr_matchers: self.stderr_matchers,
+            }
+        }
+    }
+
+    impl Default for TestCaseTemplate {
+        fn default() -> Self {
+            TestCaseTemplate {
+                name: DEFAULT_NAME,
+                filename: DEFAULT_FILENAME,
+                path: DEFAULT_PATH,
+                command: vec!["echo", "hello"],
+                stdin: "",
+                env: vec![("MESSAGE", "hello")],
+                timeout: DEFAULT_TIMEOUT,
+                tee_stdout: false,
+                tee_stderr: false,
+                status_matchers: vec![],
+                stdout_matchers: vec![],
+                stderr_matchers: vec![],
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use indexmap::indexmap;
@@ -216,93 +286,63 @@ mod tests {
         use crate::matcher::testutil::*;
 
         mod run {
+            use crate::test_case::testutil::{TestCaseTemplate, DEFAULT_NAME};
+
             use super::*;
             use pretty_assertions::assert_eq;
             use rstest::rstest;
             use serde_yaml::Value;
 
-            const DEFAULT_NAME: &str = "test";
-            const DEFAULT_FILENAME: &str = "test.yaml";
-            const DEFAULT_PATH: &str = "$.tests[0]";
-            const DEFAULT_TIMEOUT: u64 = 10;
-
-            pub fn given_test_case(
-                command: Vec<&str>,
-                stdin: &str,
-                timeout: u64,
-                status_matchers: Vec<Box<dyn Matcher<i32>>>,
-                stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
-                stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
-            ) -> TestCase {
-                TestCase {
-                    name: DEFAULT_NAME.to_string(),
-                    filename: DEFAULT_FILENAME.to_string(),
-                    path: DEFAULT_PATH.to_string(),
-                    command: command.iter().map(|x| x.to_string()).collect(),
-                    stdin: stdin.to_string(),
-                    env: vec![("MESSAGE".to_string(), "hello".to_string())],
-                    timeout: Duration::from_secs(timeout),
-                    tee_stdout: false,
-                    tee_stderr: false,
-                    status_matchers,
-                    stdout_matchers,
-                    stderr_matchers,
-                }
-            }
-
             #[rstest]
             #[case("command is exit, no matchers",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![] ),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["true"], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, status matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_success(Value::from(true))], vec![], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate{ command: vec!["true"], status_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, status matchers are failed",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["true"], status_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, stdout matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_success(Value::from(true))], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["true"], stdout_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, stdout matchers are failed",
-            given_test_case(vec!["echo", "-n", "hello"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello".as_bytes())], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello".as_bytes())], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
-            given_test_case(vec!["cat"], "hello world", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world".as_bytes())], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world".as_bytes())], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, stdout matchers are failed, env is given",
-            given_test_case(vec!["printenv", "MESSAGE"], "", DEFAULT_TIMEOUT, vec![], vec![TestMatcher::new_failure(Value::from(1))], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n".as_bytes())], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n".as_bytes())], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, stderr matchers are succeeded",
-            given_test_case(vec!["true"], "", DEFAULT_TIMEOUT,  vec![], vec![], vec![TestMatcher::new_success(Value::from(true))]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["true"], stderr_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is exit, stderr matchers are failed",
-            given_test_case(vec!["bash", "-c", "echo -n hi >&2"], "", DEFAULT_TIMEOUT, vec![], vec![], vec![TestMatcher::new_failure(Value::from(1))]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
+                TestCaseTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
             #[case("command is signaled",
-            given_test_case(vec!["bash", "-c", "kill -TERM $$"], "", DEFAULT_TIMEOUT, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             #[case("command is timed out",
-            given_test_case(vec!["sleep", "1"], "", 0, vec![TestMatcher::new_failure(Value::from(1))], vec![], vec![]),
-            TestResult{ name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestCaseTemplate { command: vec!["sleep", "1"], timeout: 0, ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
             fn when_exec_succeeded(
                 #[case] title: &str,
-                #[case] given: TestCase,
+                #[case] given: TestCaseTemplate,
                 #[case] expected: TestResult,
             ) {
-                let actual = given.run();
+                let actual = given.build().run();
                 assert_eq!(expected, actual, "{}", title);
             }
 
             #[test]
             fn when_exec_failed() {
-                let given = given_test_case(
-                    vec!["_unknown"],
-                    "",
-                    DEFAULT_TIMEOUT,
-                    vec![],
-                    vec![],
-                    vec![],
-                );
+                let given = TestCaseTemplate {
+                    command: vec!["_unknown"],
+                    ..Default::default()
+                }
+                .build();
 
                 let actual = given.run();
 
