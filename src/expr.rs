@@ -8,19 +8,27 @@ pub enum Expr {
     Json(Value),
 }
 
-pub fn eval_expr(expr: &Expr) -> Result<Value, String> {
-    match expr {
-        Expr::Literal(v) => Ok(v.clone()),
-        Expr::EnvVar(name, default) => std::env::var_os(name)
-            .map(|value| Value::from(value.to_string_lossy()))
-            .or_else(|| default.clone().map(Value::from))
-            .ok_or_else(|| format!("env var {} is not defined", name)),
-        Expr::Yaml(v) => serde_yaml::to_string(v)
-            .map(Value::from)
-            .map_err(|err| err.to_string()),
-        Expr::Json(v) => serde_json::to_string(v)
-            .map(Value::from)
-            .map_err(|err| err.to_string()),
+pub struct Context {}
+
+impl Context {
+    pub fn new() -> Self {
+        Context {}
+    }
+
+    pub fn eval_expr(&self, expr: &Expr) -> Result<Value, String> {
+        match expr {
+            Expr::Literal(v) => Ok(v.clone()),
+            Expr::EnvVar(name, default) => std::env::var_os(name)
+                .map(|value| Value::from(value.to_string_lossy()))
+                .or_else(|| default.clone().map(Value::from))
+                .ok_or_else(|| format!("env var {} is not defined", name)),
+            Expr::Yaml(v) => serde_yaml::to_string(v)
+                .map(Value::from)
+                .map_err(|err| err.to_string()),
+            Expr::Json(v) => serde_json::to_string(v)
+                .map(Value::from)
+                .map_err(|err| err.to_string()),
+        }
     }
 }
 
@@ -41,33 +49,37 @@ pub mod testutil {
 
 #[cfg(test)]
 mod tests {
-    use std::env::set_var;
-
-    use crate::ast::testuitl::mapping;
-
     use super::*;
-    use pretty_assertions::assert_eq;
-    use rstest::*;
-    use serde_yaml::Value;
+    mod eval_context {
+        use std::env::set_var;
 
-    const ENV_VAR_NAME: &str = "EVAL_EXPR_TEST_VAR";
-    const ENV_VAR_VALUE: &str = "hello world";
+        use crate::ast::testuitl::mapping;
 
-    #[rstest]
-    #[case("literal", Expr::Literal(Value::from(true)), Ok(Value::from(true)))]
-    #[case("defined env var", Expr::EnvVar(ENV_VAR_NAME.to_string(), None), Ok(Value::from(ENV_VAR_VALUE)))]
-    #[case("undefined env var with default value", Expr::EnvVar("UNDEFINED_VAR".to_string(), Some("default value".to_string())), Ok(Value::from("default value".to_string())))]
-    #[case("undefined env var without default value", Expr::EnvVar("UNDEFINED_VAR".to_string(), None), Err("env var UNDEFINED_VAR is not defined".to_string()))]
-    #[case("yaml", Expr::Yaml(Value::from(mapping(vec![("x", Value::from(true))]))), Ok(Value::from("x: true\n")))]
-    #[case("json", Expr::Json(Value::from(mapping(vec![("x", Value::from(true))]))), Ok(Value::from("{\"x\":true}")))]
-    fn test_eval_expr(
-        #[case] title: &str,
-        #[case] expr: Expr,
-        #[case] expected: Result<Value, String>,
-    ) {
-        set_var(ENV_VAR_NAME, ENV_VAR_VALUE);
+        use super::*;
+        use pretty_assertions::assert_eq;
+        use rstest::*;
+        use serde_yaml::Value;
 
-        let actual = eval_expr(&expr);
-        assert_eq!(expected, actual, "{}", title);
+        const ENV_VAR_NAME: &str = "EVAL_EXPR_TEST_VAR";
+        const ENV_VAR_VALUE: &str = "hello world";
+
+        #[rstest]
+        #[case("literal", Expr::Literal(Value::from(true)), Ok(Value::from(true)))]
+        #[case("defined env var", Expr::EnvVar(ENV_VAR_NAME.to_string(), None), Ok(Value::from(ENV_VAR_VALUE)))]
+        #[case("undefined env var with default value", Expr::EnvVar("UNDEFINED_VAR".to_string(), Some("default value".to_string())), Ok(Value::from("default value".to_string())))]
+        #[case("undefined env var without default value", Expr::EnvVar("UNDEFINED_VAR".to_string(), None), Err("env var UNDEFINED_VAR is not defined".to_string()))]
+        #[case("yaml", Expr::Yaml(Value::from(mapping(vec![("x", Value::from(true))]))), Ok(Value::from("x: true\n")))]
+        #[case("json", Expr::Json(Value::from(mapping(vec![("x", Value::from(true))]))), Ok(Value::from("{\"x\":true}")))]
+        fn test_eval_expr(
+            #[case] title: &str,
+            #[case] expr: Expr,
+            #[case] expected: Result<Value, String>,
+        ) {
+            set_var(ENV_VAR_NAME, ENV_VAR_VALUE);
+
+            let ctx = Context::new();
+            let actual = ctx.eval_expr(&expr);
+            assert_eq!(expected, actual, "{}", title);
+        }
     }
 }

@@ -3,7 +3,7 @@ use std::time::Duration;
 use indexmap::IndexMap;
 
 use crate::{
-    expr::{eval_expr, Expr},
+    expr::{Context, Expr},
     matcher::{StatusMatcherRegistry, StreamMatcherRegistry},
     test_case::TestCase,
     validator::{Validator, Violation},
@@ -44,13 +44,15 @@ pub fn eval_test_expr(
     let mut v =
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
 
+    let ctx = Context::new();
+
     let command: Vec<String> = v.in_field("command", |v| {
         test_case_expr
             .command
             .clone()
             .into_iter()
             .enumerate()
-            .filter_map(|(i, x)| match eval_expr(&x) {
+            .filter_map(|(i, x)| match ctx.eval_expr(&x) {
                 Ok(value) => v.in_index(i, |v| v.must_be_string(&value)),
                 Err(message) => {
                     v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
@@ -61,7 +63,7 @@ pub fn eval_test_expr(
     });
 
     let name = if let Some(name_expr) = &test_case_expr.name {
-        v.in_field("name", |v| match eval_expr(name_expr) {
+        v.in_field("name", |v| match ctx.eval_expr(name_expr) {
             Ok(value) => v.must_be_string(&value),
             Err(message) => {
                 v.add_violation(format!("eval error: {}", message));
@@ -80,7 +82,7 @@ pub fn eval_test_expr(
     .unwrap_or("".to_string());
 
     let stdin = v
-        .in_field("stdin", |v| match eval_expr(&test_case_expr.stdin) {
+        .in_field("stdin", |v| match ctx.eval_expr(&test_case_expr.stdin) {
             Ok(value) => v.must_be_string(&value),
             Err(message) => {
                 v.add_violation(format!("eval error: {}", message));
@@ -94,7 +96,7 @@ pub fn eval_test_expr(
             .env
             .iter()
             .filter_map(|(name, expr)| {
-                match eval_expr(expr) {
+                match ctx.eval_expr(expr) {
                     Ok(value) => v.in_field(name, |v| v.must_be_string(&value)),
                     Err(message) => {
                         v.in_field(name, |v| {
@@ -112,7 +114,7 @@ pub fn eval_test_expr(
         test_case_expr
             .status_matchers
             .iter()
-            .filter_map(|(name, param_expr)| match eval_expr(param_expr) {
+            .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
                 Ok(param) => status_mr.parse(name, v, &param),
                 Err(message) => {
                     v.in_field(name, |v| {
@@ -128,7 +130,7 @@ pub fn eval_test_expr(
         test_case_expr
             .stdout_matchers
             .iter()
-            .filter_map(|(name, param_expr)| match eval_expr(param_expr) {
+            .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
                 Ok(param) => stream_mr.parse(name, v, &param),
                 Err(message) => {
                     v.in_field(name, |v| {
@@ -144,7 +146,7 @@ pub fn eval_test_expr(
         test_case_expr
             .stderr_matchers
             .iter()
-            .filter_map(|(name, param_expr)| match eval_expr(param_expr) {
+            .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
                 Ok(param) => stream_mr.parse(name, v, &param),
                 Err(message) => {
                     v.in_field(name, |v| {
