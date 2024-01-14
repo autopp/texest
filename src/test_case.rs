@@ -7,6 +7,30 @@ use crate::{
     matcher::Matcher,
 };
 
+pub trait LifeCycleHook: Debug {
+    fn serialize(&self) -> (&str, serde_yaml::Value);
+}
+
+pub trait SetupHook: LifeCycleHook {
+    fn setup(&self) -> Result<(), String>;
+}
+
+impl PartialEq for dyn SetupHook {
+    fn eq(&self, other: &Self) -> bool {
+        self.serialize() == other.serialize()
+    }
+}
+
+pub trait TeardownHook: LifeCycleHook {
+    fn teardown(&self) -> Result<(), String>;
+}
+
+impl PartialEq for dyn TeardownHook {
+    fn eq(&self, other: &Self) -> bool {
+        self.serialize() == other.serialize()
+    }
+}
+
 #[derive(Debug)]
 pub struct TestCase {
     pub name: String,
@@ -21,6 +45,8 @@ pub struct TestCase {
     pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
     pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+    pub setup_hooks: Vec<Box<dyn SetupHook>>,
+    pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
 }
 
 pub struct TestCaseFile<'a> {
@@ -118,6 +144,10 @@ impl TestCase {
                 output
             });
 
+        self.setup_hooks.iter().for_each(|hook| {
+            hook.setup();
+        });
+
         if let Err(err) = exec_result {
             return TestResult {
                 name: self.name.clone(),
@@ -190,6 +220,10 @@ impl TestCase {
             })
             .collect::<Vec<_>>();
 
+        self.teardown_hooks.iter().rev().for_each(|hook| {
+            hook.teardown();
+        });
+
         TestResult {
             name: self.name.clone(),
             failures: indexmap! {
@@ -202,16 +236,69 @@ impl TestCase {
 }
 
 #[cfg(test)]
-mod testutil {
-    use crate::matcher::Matcher;
-    use std::time::Duration;
+pub mod testutil {
+    use serde_yaml::Value;
 
-    use super::TestCase;
+    use crate::matcher::Matcher;
+    use std::{cell::RefCell, rc::Rc, time::Duration};
+
+    use super::{LifeCycleHook, SetupHook, TeardownHook, TestCase};
 
     pub const DEFAULT_NAME: &str = "test";
     pub const DEFAULT_FILENAME: &str = "test.yaml";
     pub const DEFAULT_PATH: &str = "$.tests[0]";
     pub const DEFAULT_TIMEOUT: u64 = 10;
+
+    #[derive(Debug, PartialEq)]
+    pub enum HookType {
+        Setup,
+        Teardown,
+    }
+
+    pub type HookHistory = Vec<(HookType, &'static str)>;
+
+    #[derive(Debug)]
+    pub struct TestHook {
+        pub name: &'static str,
+        pub err: Option<&'static str>,
+        pub history: Rc<RefCell<HookHistory>>,
+    }
+
+    impl TestHook {
+        pub fn new(
+            name: &'static str,
+            err: Option<&'static str>,
+            history: Rc<RefCell<HookHistory>>,
+        ) -> Self {
+            TestHook { name, err, history }
+        }
+
+        fn to_result(&self) -> Result<(), String> {
+            self.err.map(|err| Err(err.into())).unwrap_or(Ok(()))
+        }
+    }
+
+    impl LifeCycleHook for TestHook {
+        fn serialize(&self) -> (&str, Value) {
+            ("test", Value::from(self.name))
+        }
+    }
+
+    impl SetupHook for TestHook {
+        fn setup(&self) -> Result<(), String> {
+            self.history.borrow_mut().push((HookType::Setup, self.name));
+            self.to_result()
+        }
+    }
+
+    impl TeardownHook for TestHook {
+        fn teardown(&self) -> Result<(), String> {
+            self.history
+                .borrow_mut()
+                .push((HookType::Teardown, self.name));
+            self.to_result()
+        }
+    }
 
     pub struct TestCaseTemplate {
         pub name: &'static str,
@@ -226,6 +313,8 @@ mod testutil {
         pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
         pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
         pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+        pub setup_hooks: Vec<Box<dyn SetupHook>>,
+        pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
     }
 
     impl TestCaseTemplate {
@@ -247,6 +336,8 @@ mod testutil {
                 status_matchers: self.status_matchers,
                 stdout_matchers: self.stdout_matchers,
                 stderr_matchers: self.stderr_matchers,
+                setup_hooks: self.setup_hooks,
+                teardown_hooks: self.teardown_hooks,
             }
         }
     }
@@ -259,13 +350,15 @@ mod testutil {
                 path: DEFAULT_PATH,
                 command: vec!["echo", "hello"],
                 stdin: "",
-                env: vec![("MESSAGE", "hello")],
+                env: vec![],
                 timeout: DEFAULT_TIMEOUT,
                 tee_stdout: false,
                 tee_stderr: false,
                 status_matchers: vec![],
                 stdout_matchers: vec![],
                 stderr_matchers: vec![],
+                setup_hooks: vec![],
+                teardown_hooks: vec![],
             }
         }
     }
@@ -286,7 +379,9 @@ mod tests {
         use crate::matcher::testutil::*;
 
         mod run {
-            use crate::test_case::testutil::{TestCaseTemplate, DEFAULT_NAME};
+            use std::{cell::RefCell, rc::Rc};
+
+            use crate::test_case::testutil::{HookType, TestCaseTemplate, TestHook, DEFAULT_NAME};
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -334,6 +429,44 @@ mod tests {
             ) {
                 let actual = given.build().run();
                 assert_eq!(expected, actual, "{}", title);
+            }
+
+            #[test]
+            fn when_hooks_given() {
+                let history = Rc::new(RefCell::new(vec![]));
+
+                let given = TestCaseTemplate {
+                    command: vec!["true"],
+                    setup_hooks: vec![
+                        Box::new(TestHook::new("setup1", None, Rc::clone(&history))),
+                        Box::new(TestHook::new("setup2", None, Rc::clone(&history))),
+                    ],
+                    teardown_hooks: vec![
+                        Box::new(TestHook::new("teardown1", None, Rc::clone(&history))),
+                        Box::new(TestHook::new("teardown2", None, Rc::clone(&history))),
+                    ],
+                    ..Default::default()
+                }
+                .build();
+
+                let result = given.run();
+                assert_eq!(
+                    TestResult {
+                        name: DEFAULT_NAME.into(),
+                        failures: indexmap! { STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![] }
+                    },
+                    result
+                );
+
+                assert_eq!(
+                    vec![
+                        (HookType::Setup, "setup1"),
+                        (HookType::Setup, "setup2"),
+                        (HookType::Teardown, "teardown2"),
+                        (HookType::Teardown, "teardown1"),
+                    ],
+                    *history.borrow()
+                );
             }
 
             #[test]

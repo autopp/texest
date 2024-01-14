@@ -93,14 +93,12 @@ impl Formatter for JsonFormatter {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use indexmap::indexmap;
     use serde_json::json;
 
     use crate::{
         reporter::ColorMarker,
-        test_case::{TestCase, TestResult},
+        test_case::{testutil::TestCaseTemplate, TestResult},
     };
 
     use super::*;
@@ -121,20 +119,10 @@ mod tests {
     fn on_test_start() {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
-        let test_case = TestCase {
-            name: "test".to_string(),
-            filename: "test.yaml".to_string(),
-            path: ".tests[0]".to_string(),
-            command: vec!["echo".to_string(), "hello".to_string()],
-            env: vec![],
-            stdin: "".to_string(),
-            status_matchers: vec![],
-            stdout_matchers: vec![],
-            stderr_matchers: vec![],
-            tee_stderr: false,
-            tee_stdout: false,
-            timeout: Duration::from_secs(10),
-        };
+        let test_case = TestCaseTemplate {
+            ..Default::default()
+        }
+        .build();
 
         let r = f.on_test_case_start(&mut buf, &ColorMarker::new(false), &test_case);
 

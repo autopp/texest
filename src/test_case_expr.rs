@@ -170,6 +170,8 @@ pub fn eval_test_expr(
             status_matchers,
             stdout_matchers,
             stderr_matchers,
+            setup_hooks: vec![],
+            teardown_hooks: vec![],
         }])
     } else {
         Err(TestExprError {
@@ -309,6 +311,8 @@ mod tests {
             status_matchers: vec![],
             stdout_matchers: vec![],
             stderr_matchers: vec![],
+            setup_hooks: vec![],
+            teardown_hooks: vec![],
         }])]
         #[case("with name",
             TestCaseExprTemplate {
@@ -329,6 +333,8 @@ mod tests {
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
                 },
             ]
         )]
@@ -351,6 +357,8 @@ mod tests {
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
                 },
             ]
         )]
@@ -373,6 +381,8 @@ mod tests {
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
                 },
             ]
         )]
@@ -397,6 +407,8 @@ mod tests {
                     status_matchers: vec!(TestMatcher::new_success(Value::from(true))),
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
                 },
             ]
         )]
@@ -421,6 +433,8 @@ mod tests {
                     status_matchers: vec![],
                     stdout_matchers: vec![TestMatcher::new_success(Value::from(true))],
                     stderr_matchers: vec![],
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
                 },
             ]
         )]
@@ -445,6 +459,8 @@ mod tests {
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![TestMatcher::new_success(Value::from(true))],
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
                 },
             ]
         )]
