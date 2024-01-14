@@ -1,4 +1,4 @@
-use std::{fmt::Debug, os::unix::ffi::OsStrExt, time::Duration};
+use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
 use indexmap::{indexmap, IndexMap};
 
@@ -127,6 +127,25 @@ impl PartialEq for TestCase {
 impl TestCase {
     pub fn run(&self) -> TestResult {
         let rt = tokio::runtime::Runtime::new().unwrap();
+
+        let mut setup_failures = vec![];
+        self.setup_hooks.iter().try_for_each(|hook| {
+            let r = hook.setup();
+            if let Err(err) = r {
+                setup_failures.push(err);
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+
+        if !setup_failures.is_empty() {
+            return TestResult {
+                name: self.name.clone(),
+                failures: indexmap! { "setup".to_string() => setup_failures },
+            };
+        }
+
         let exec_result = rt
             .block_on(execute_command(
                 self.command.clone(),
@@ -143,10 +162,6 @@ impl TestCase {
                 }
                 output
             });
-
-        self.setup_hooks.iter().for_each(|hook| {
-            hook.setup();
-        });
 
         if let Err(err) = exec_result {
             return TestResult {
@@ -220,8 +235,11 @@ impl TestCase {
             })
             .collect::<Vec<_>>();
 
+        let mut teardown_failures = vec![];
         self.teardown_hooks.iter().rev().for_each(|hook| {
-            hook.teardown();
+            if let Err(err) = hook.teardown() {
+                teardown_failures.push(err);
+            }
         });
 
         TestResult {
@@ -230,6 +248,7 @@ impl TestCase {
                 "status".to_string() => status,
                 "stdout".to_string() => stdout_messages,
                 "stderr".to_string() => stderr_messages,
+                "teardown".to_string() => teardown_failures
             },
         }
     }
@@ -373,99 +392,160 @@ mod tests {
     static STATUS_STRING: Lazy<String> = Lazy::new(|| "status".to_string());
     static STDOUT_STRING: Lazy<String> = Lazy::new(|| "stdout".to_string());
     static STDERR_STRING: Lazy<String> = Lazy::new(|| "stderr".to_string());
+    static SETUP_STRING: Lazy<String> = Lazy::new(|| "setup".to_string());
+    static TEARDOWN_STRING: Lazy<String> = Lazy::new(|| "teardown".to_string());
 
     mod test_case {
         use super::*;
-        use crate::matcher::testutil::*;
 
         mod run {
             use std::{cell::RefCell, rc::Rc};
 
-            use crate::test_case::testutil::{HookType, TestCaseTemplate, TestHook, DEFAULT_NAME};
+            use crate::matcher::testutil::TestMatcher;
+            use crate::test_case::testutil::HookType::{Setup, Teardown};
+            use crate::test_case::testutil::{
+                HookHistory, TestCaseTemplate, TestHook, DEFAULT_NAME,
+            };
 
             use super::*;
             use pretty_assertions::assert_eq;
             use rstest::rstest;
             use serde_yaml::Value;
 
+            fn complete_failures(test_result: &TestResult) -> TestResult {
+                TestResult {
+                    name: test_result.name.clone(),
+                    failures: indexmap! {
+                        STATUS_STRING.clone() => test_result.failures.get(&*STATUS_STRING).map(Clone::clone).unwrap_or(vec![]),
+                        STDOUT_STRING.clone() => test_result.failures.get(&*STDOUT_STRING).map(Clone::clone).unwrap_or(vec![]),
+                        STDERR_STRING.clone() => test_result.failures.get(&*STDERR_STRING).map(Clone::clone).unwrap_or(vec![]),
+                        SETUP_STRING.clone() => test_result.failures.get(&*SETUP_STRING).map(Clone::clone).unwrap_or(vec![]),
+                        TEARDOWN_STRING.clone() => test_result.failures.get(&*TEARDOWN_STRING).map(Clone::clone).unwrap_or(vec![]),
+                    },
+                }
+            }
+
             #[rstest]
             #[case("command is exit, no matchers",
                 TestCaseTemplate { command: vec!["true"], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are succeeded",
                 TestCaseTemplate{ command: vec!["true"], status_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are failed",
                 TestCaseTemplate { command: vec!["true"], status_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)]} })]
             #[case("command is exit, stdout matchers are succeeded",
                 TestCaseTemplate { command: vec!["true"], stdout_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stdout matchers are failed",
                 TestCaseTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello".as_bytes())], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
                 TestCaseTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world".as_bytes())], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, env is given",
                 TestCaseTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n".as_bytes())], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n".as_bytes())]} })]
             #[case("command is exit, stderr matchers are succeeded",
                 TestCaseTemplate { command: vec!["true"], stderr_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stderr matchers are failed",
                 TestCaseTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
             #[case("command is signaled",
                 TestCaseTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()]} })]
             #[case("command is timed out",
                 TestCaseTemplate { command: vec!["sleep", "1"], timeout: 0, ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()]} })]
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCaseTemplate,
                 #[case] expected: TestResult,
             ) {
                 let actual = given.build().run();
-                assert_eq!(expected, actual, "{}", title);
+                assert_eq!(
+                    complete_failures(&expected),
+                    complete_failures(&actual),
+                    "{}",
+                    title
+                );
             }
 
-            #[test]
-            fn when_hooks_given() {
+            #[rstest]
+            #[case("all hooks and assertions are succeeded",
+                TestMatcher::new_success(Value::from(true)),
+                vec![("setup1", None), ("setup2", None)],
+                vec![("teardown1", None), ("teardown2", None)],
+                indexmap!{},
+                vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
+            #[case("when assertion is failed, remaining hooks are executed",
+                TestMatcher::new_failure(Value::from(true)),
+                vec![("setup1", None), ("setup2", None)],
+                vec![("teardown1", None), ("teardown2", None)],
+                indexmap!{ STATUS_STRING.clone() => vec![TestMatcher::failure_message(42)] },
+                vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
+            #[case("when first setup hook is failed, target command and remaning hooks are not executed",
+                TestMatcher::new_failure(Value::from(true)),
+                vec![("setup1", Some("setup1 failed")), ("setup2", None)],
+                vec![("teardown1", None), ("teardown2", None)],
+                indexmap!{ SETUP_STRING.clone() => vec!["setup1 failed".to_string()] },
+                vec![(Setup, "setup1")])]
+            #[case("when first teardown hook is failed, remaining hooks are executed",
+                TestMatcher::new_failure(Value::from(true)),
+                vec![("setup1", None), ("setup2", None)],
+                vec![("teardown1", None), ("teardown2", Some("teardown2 failed"))],
+                indexmap!{ STATUS_STRING.clone() => vec![TestMatcher::failure_message(42)], TEARDOWN_STRING.clone() => vec!["teardown2 failed".to_string()] },
+                vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
+            fn when_hooks_given(
+                #[case] title: &str,
+                #[case] status_matcher: Box<dyn Matcher<i32>>,
+                #[case] setup_hooks: Vec<(&'static str, Option<&'static str>)>,
+                #[case] teardown_hooks: Vec<(&'static str, Option<&'static str>)>,
+                #[case] expected_failures: IndexMap<String, Vec<String>>,
+                #[case] expected_history: HookHistory,
+            ) {
                 let history = Rc::new(RefCell::new(vec![]));
 
                 let given = TestCaseTemplate {
-                    command: vec!["true"],
-                    setup_hooks: vec![
-                        Box::new(TestHook::new("setup1", None, Rc::clone(&history))),
-                        Box::new(TestHook::new("setup2", None, Rc::clone(&history))),
-                    ],
-                    teardown_hooks: vec![
-                        Box::new(TestHook::new("teardown1", None, Rc::clone(&history))),
-                        Box::new(TestHook::new("teardown2", None, Rc::clone(&history))),
-                    ],
+                    command: vec!["bash", "-c", "exit 42"],
+                    status_matchers: vec![status_matcher],
+                    setup_hooks: setup_hooks
+                        .iter()
+                        .map(|(name, err)| -> Box<dyn SetupHook> {
+                            Box::new(TestHook::new(name, *err, Rc::clone(&history)))
+                        })
+                        .collect(),
+                    teardown_hooks: teardown_hooks
+                        .iter()
+                        .map(|(name, err)| -> Box<dyn TeardownHook> {
+                            Box::new(TestHook::new(name, *err, Rc::clone(&history)))
+                        })
+                        .collect(),
                     ..Default::default()
                 }
                 .build();
 
                 let result = given.run();
                 assert_eq!(
-                    TestResult {
+                    complete_failures(&TestResult {
                         name: DEFAULT_NAME.into(),
-                        failures: indexmap! { STATUS_STRING.clone() => vec![], STDOUT_STRING.clone() => vec![], STDERR_STRING.clone() => vec![] }
-                    },
-                    result
+                        failures: expected_failures
+                            .iter()
+                            .map(|(subject, messages)| (subject.to_string(), messages.clone()))
+                            .collect()
+                    }),
+                    complete_failures(&result),
+                    "{}: result",
+                    title
                 );
 
                 assert_eq!(
-                    vec![
-                        (HookType::Setup, "setup1"),
-                        (HookType::Setup, "setup2"),
-                        (HookType::Teardown, "teardown2"),
-                        (HookType::Teardown, "teardown1"),
-                    ],
-                    *history.borrow()
+                    expected_history,
+                    *history.borrow(),
+                    "{}: hook history",
+                    title
                 );
             }
 
