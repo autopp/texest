@@ -3,9 +3,10 @@ use std::time::Duration;
 use indexmap::IndexMap;
 
 use crate::{
-    expr::{Context, Expr},
+    expr::{Context, EvalOutput, Expr},
     matcher::{StatusMatcherRegistry, StreamMatcherRegistry},
-    test_case::TestCase,
+    test_case::{SetupHook, TestCase},
+    tmp_dir::TmpDirSupplier,
     validator::{Validator, Violation},
 };
 
@@ -37,14 +38,15 @@ pub struct TestCaseExprFile {
 }
 
 pub fn eval_test_expr(
+    tmp_dir_supplier: &impl TmpDirSupplier,
     status_mr: &StatusMatcherRegistry,
     stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
 ) -> Result<Vec<TestCase>, TestExprError> {
     let mut v =
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
-
-    let ctx = Context::new();
+    let ctx = Context::new(tmp_dir_supplier);
+    let _setup_hooks: Vec<Box<dyn SetupHook>> = vec![];
 
     let command: Vec<String> = v.in_field("command", |v| {
         test_case_expr
@@ -53,7 +55,7 @@ pub fn eval_test_expr(
             .into_iter()
             .enumerate()
             .filter_map(|(i, x)| match ctx.eval_expr(&x) {
-                Ok(value) => v.in_index(i, |v| v.must_be_string(&value)),
+                Ok(EvalOutput { value, .. }) => v.in_index(i, |v| v.must_be_string(&value)),
                 Err(message) => {
                     v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
                     None
@@ -64,7 +66,7 @@ pub fn eval_test_expr(
 
     let name = if let Some(name_expr) = &test_case_expr.name {
         v.in_field("name", |v| match ctx.eval_expr(name_expr) {
-            Ok(value) => v.must_be_string(&value),
+            Ok(EvalOutput { value, .. }) => v.must_be_string(&value),
             Err(message) => {
                 v.add_violation(format!("eval error: {}", message));
                 None
@@ -83,7 +85,7 @@ pub fn eval_test_expr(
 
     let stdin = v
         .in_field("stdin", |v| match ctx.eval_expr(&test_case_expr.stdin) {
-            Ok(value) => v.must_be_string(&value),
+            Ok(EvalOutput { value, .. }) => v.must_be_string(&value),
             Err(message) => {
                 v.add_violation(format!("eval error: {}", message));
                 None
@@ -97,7 +99,7 @@ pub fn eval_test_expr(
             .iter()
             .filter_map(|(name, expr)| {
                 match ctx.eval_expr(expr) {
-                    Ok(value) => v.in_field(name, |v| v.must_be_string(&value)),
+                    Ok(EvalOutput { value, .. }) => v.in_field(name, |v| v.must_be_string(&value)),
                     Err(message) => {
                         v.in_field(name, |v| {
                             v.add_violation(format!("eval error: {}", message))
@@ -115,7 +117,7 @@ pub fn eval_test_expr(
             .status_matchers
             .iter()
             .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
-                Ok(param) => status_mr.parse(name, v, &param),
+                Ok(param) => status_mr.parse(name, v, &param.value),
                 Err(message) => {
                     v.in_field(name, |v| {
                         v.add_violation(format!("eval error: {}", message))
@@ -131,7 +133,7 @@ pub fn eval_test_expr(
             .stdout_matchers
             .iter()
             .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
-                Ok(param) => stream_mr.parse(name, v, &param),
+                Ok(param) => stream_mr.parse(name, v, &param.value),
                 Err(message) => {
                     v.in_field(name, |v| {
                         v.add_violation(format!("eval error: {}", message))
@@ -147,7 +149,7 @@ pub fn eval_test_expr(
             .stderr_matchers
             .iter()
             .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
-                Ok(param) => stream_mr.parse(name, v, &param),
+                Ok(param) => stream_mr.parse(name, v, &param.value),
                 Err(message) => {
                     v.in_field(name, |v| {
                         v.add_violation(format!("eval error: {}", message))
@@ -174,6 +176,7 @@ pub fn eval_test_expr(
             stderr_matchers,
             setup_hooks: vec![],
             teardown_hooks: vec![],
+            tmp_dir: None,
         }])
     } else {
         Err(TestExprError {
@@ -283,6 +286,7 @@ mod tests {
                 VIOLATION_MESSAGE,
             },
             test_case_expr::testutil::TestCaseExprTemplate,
+            tmp_dir::testutil::StubTmpDirFactory,
         };
 
         use super::*;
@@ -315,6 +319,7 @@ mod tests {
             stderr_matchers: vec![],
             setup_hooks: vec![],
             teardown_hooks: vec![],
+            tmp_dir: None,
         }])]
         #[case("with name",
             TestCaseExprTemplate {
@@ -337,6 +342,7 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
+                    tmp_dir: None,
                 },
             ]
         )]
@@ -361,6 +367,7 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
+                    tmp_dir: None,
                 },
             ]
         )]
@@ -385,6 +392,7 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
+                    tmp_dir: None,
                 },
             ]
         )]
@@ -411,6 +419,7 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
+                    tmp_dir: None,
                 },
             ]
         )]
@@ -437,6 +446,7 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
+                    tmp_dir: None,
                 },
             ]
         )]
@@ -463,6 +473,7 @@ mod tests {
                     stderr_matchers: vec![TestMatcher::new_success(Value::from(true))],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
+                    tmp_dir: None,
                 },
             ]
         )]
@@ -471,10 +482,14 @@ mod tests {
             #[case] given: TestCaseExprTemplate,
             #[case] expected: Vec<TestCase>,
         ) {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let tmp_dir_supplier = StubTmpDirFactory {
+                path_buf: tmp_dir.path().to_path_buf(),
+            };
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
-            let actual = eval_test_expr(&status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
 
             assert_eq!(Ok(expected), actual, "{}", title);
         }
@@ -640,10 +655,14 @@ mod tests {
             #[case] given: TestCaseExprTemplate,
             #[case] expected_violations: Vec<Violation>,
         ) {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let tmp_dir_supplier = StubTmpDirFactory {
+                path_buf: tmp_dir.path().to_path_buf(),
+            };
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
-            let actual = eval_test_expr(&status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
 
             assert_eq!(
                 Err(TestExprError {

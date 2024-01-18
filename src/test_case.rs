@@ -1,6 +1,7 @@
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
 use indexmap::{indexmap, IndexMap};
+use tempfile::TempDir;
 
 use crate::{
     exec::{execute_command, Status},
@@ -47,6 +48,7 @@ pub struct TestCase {
     pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
+    pub tmp_dir: Option<TempDir>,
 }
 
 pub struct TestCaseFile<'a> {
@@ -107,20 +109,21 @@ impl PartialEq for TestCase {
             || self.timeout != other.timeout
             || self.tee_stdout != other.tee_stdout
             || self.tee_stderr != other.tee_stderr
+            || self.status_matchers != other.status_matchers
+            || self.stdout_matchers != other.stdout_matchers
+            || self.stderr_matchers != other.stderr_matchers
         {
             return false;
         }
 
-        if self.status_matchers.len() != other.status_matchers.len() {
-            return false;
+        match self.tmp_dir {
+            Some(ref tmp_dir) => other
+                .tmp_dir
+                .as_ref()
+                .map(|other_tmp_dir| tmp_dir.path() == other_tmp_dir.path())
+                .unwrap_or(false),
+            None => other.tmp_dir.is_none(),
         }
-
-        self.status_matchers
-            .iter()
-            .zip(other.status_matchers.iter())
-            .all(|(self_status_matcher, other_status_matcher)| {
-                self_status_matcher == other_status_matcher
-            })
     }
 }
 
@@ -257,6 +260,7 @@ impl TestCase {
 #[cfg(test)]
 pub mod testutil {
     use serde_yaml::Value;
+    use tempfile::TempDir;
 
     use crate::matcher::Matcher;
     use std::{cell::RefCell, rc::Rc, time::Duration};
@@ -334,6 +338,7 @@ pub mod testutil {
         pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
         pub setup_hooks: Vec<Box<dyn SetupHook>>,
         pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
+        pub tmp_dir: Option<TempDir>,
     }
 
     impl TestCaseTemplate {
@@ -357,6 +362,7 @@ pub mod testutil {
                 stderr_matchers: self.stderr_matchers,
                 setup_hooks: self.setup_hooks,
                 teardown_hooks: self.teardown_hooks,
+                tmp_dir: self.tmp_dir,
             }
         }
     }
@@ -378,6 +384,7 @@ pub mod testutil {
                 stderr_matchers: vec![],
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
+                tmp_dir: None,
             }
         }
     }
