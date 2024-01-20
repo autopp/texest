@@ -1,11 +1,11 @@
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
 use indexmap::{indexmap, IndexMap};
-use tempfile::TempDir;
 
 use crate::{
     exec::{execute_command, Status},
     matcher::Matcher,
+    tmp_dir::TmpDir,
 };
 
 pub trait LifeCycleHook: Debug {
@@ -33,7 +33,7 @@ impl PartialEq for dyn TeardownHook {
 }
 
 #[derive(Debug)]
-pub struct TestCase {
+pub struct TestCase<T: TmpDir> {
     pub name: String,
     pub filename: String,
     pub path: String,
@@ -48,12 +48,12 @@ pub struct TestCase {
     pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
-    pub tmp_dir: Option<TempDir>,
+    pub tmp_dir: Option<T>,
 }
 
-pub struct TestCaseFile<'a> {
+pub struct TestCaseFile<'a, T: TmpDir> {
     pub filename: String,
-    pub test_cases: Vec<&'a TestCase>,
+    pub test_cases: Vec<&'a TestCase<T>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -99,7 +99,7 @@ impl TestResultSummary {
     }
 }
 
-impl PartialEq for TestCase {
+impl<T: TmpDir> PartialEq for TestCase<T> {
     fn eq(&self, other: &Self) -> bool {
         if self.name != other.name
             || self.filename != other.filename
@@ -112,6 +112,8 @@ impl PartialEq for TestCase {
             || self.status_matchers != other.status_matchers
             || self.stdout_matchers != other.stdout_matchers
             || self.stderr_matchers != other.stderr_matchers
+            || self.setup_hooks != other.setup_hooks
+            || self.teardown_hooks != other.teardown_hooks
         {
             return false;
         }
@@ -127,7 +129,7 @@ impl PartialEq for TestCase {
     }
 }
 
-impl TestCase {
+impl<T: TmpDir> TestCase<T> {
     pub fn run(&self) -> TestResult {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -260,9 +262,8 @@ impl TestCase {
 #[cfg(test)]
 pub mod testutil {
     use serde_yaml::Value;
-    use tempfile::TempDir;
 
-    use crate::matcher::Matcher;
+    use crate::{matcher::Matcher, tmp_dir::TmpDir};
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
     use super::{LifeCycleHook, SetupHook, TeardownHook, TestCase};
@@ -323,7 +324,7 @@ pub mod testutil {
         }
     }
 
-    pub struct TestCaseTemplate {
+    pub struct TestCaseTemplate<T: TmpDir> {
         pub name: &'static str,
         pub filename: &'static str,
         pub path: &'static str,
@@ -338,11 +339,11 @@ pub mod testutil {
         pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
         pub setup_hooks: Vec<Box<dyn SetupHook>>,
         pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
-        pub tmp_dir: Option<TempDir>,
+        pub tmp_dir: Option<T>,
     }
 
-    impl TestCaseTemplate {
-        pub fn build(self) -> TestCase {
+    impl<T: TmpDir> TestCaseTemplate<T> {
+        pub fn build(self) -> TestCase<T> {
             TestCase {
                 name: self.name.to_string(),
                 filename: self.filename.to_string(),
@@ -367,7 +368,7 @@ pub mod testutil {
         }
     }
 
-    impl Default for TestCaseTemplate {
+    impl<T: TmpDir> Default for TestCaseTemplate<T> {
         fn default() -> Self {
             TestCaseTemplate {
                 name: DEFAULT_NAME,
@@ -413,6 +414,7 @@ mod tests {
             use crate::test_case::testutil::{
                 HookHistory, TestCaseTemplate, TestHook, DEFAULT_NAME,
             };
+            use crate::tmp_dir::testutil::StubTmpDir;
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -468,7 +470,7 @@ mod tests {
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()]} })]
             fn when_exec_succeeded(
                 #[case] title: &str,
-                #[case] given: TestCaseTemplate,
+                #[case] given: TestCaseTemplate<StubTmpDir>,
                 #[case] expected: TestResult,
             ) {
                 let actual = given.build().run();
@@ -515,7 +517,7 @@ mod tests {
             ) {
                 let history = Rc::new(RefCell::new(vec![]));
 
-                let given = TestCaseTemplate {
+                let given = TestCaseTemplate::<StubTmpDir> {
                     command: vec!["bash", "-c", "exit 42"],
                     status_matchers: vec![status_matcher],
                     setup_hooks: setup_hooks
@@ -558,7 +560,7 @@ mod tests {
 
             #[test]
             fn when_exec_failed() {
-                let given = TestCaseTemplate {
+                let given = TestCaseTemplate::<StubTmpDir> {
                     command: vec!["_unknown"],
                     ..Default::default()
                 }

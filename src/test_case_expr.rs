@@ -37,16 +37,16 @@ pub struct TestCaseExprFile {
     pub test_case_exprs: Vec<TestCaseExpr>,
 }
 
-pub fn eval_test_expr(
-    tmp_dir_supplier: &impl TmpDirSupplier,
+pub fn eval_test_expr<TS: TmpDirSupplier>(
+    tmp_dir_supplier: &TS,
     status_mr: &StatusMatcherRegistry,
     stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
-) -> Result<Vec<TestCase>, TestExprError> {
+) -> Result<Vec<TestCase<TS::T>>, TestExprError> {
     let mut v =
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
     let ctx = Context::new(tmp_dir_supplier);
-    let _setup_hooks: Vec<Box<dyn SetupHook>> = vec![];
+    let mut setup_hooks: Vec<Box<dyn SetupHook>> = vec![];
 
     let command: Vec<String> = v.in_field("command", |v| {
         test_case_expr
@@ -55,7 +55,12 @@ pub fn eval_test_expr(
             .into_iter()
             .enumerate()
             .filter_map(|(i, x)| match ctx.eval_expr(&x) {
-                Ok(EvalOutput { value, .. }) => v.in_index(i, |v| v.must_be_string(&value)),
+                Ok(EvalOutput { value, setup_hook }) => {
+                    if let Some(hook) = setup_hook {
+                        setup_hooks.push(hook)
+                    }
+                    v.in_index(i, |v| v.must_be_string(&value))
+                }
                 Err(message) => {
                     v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
                     None
@@ -66,7 +71,12 @@ pub fn eval_test_expr(
 
     let name = if let Some(name_expr) = &test_case_expr.name {
         v.in_field("name", |v| match ctx.eval_expr(name_expr) {
-            Ok(EvalOutput { value, .. }) => v.must_be_string(&value),
+            Ok(EvalOutput { value, setup_hook }) => {
+                if let Some(hook) = setup_hook {
+                    setup_hooks.push(hook)
+                }
+                v.must_be_string(&value)
+            }
             Err(message) => {
                 v.add_violation(format!("eval error: {}", message));
                 None
@@ -85,7 +95,12 @@ pub fn eval_test_expr(
 
     let stdin = v
         .in_field("stdin", |v| match ctx.eval_expr(&test_case_expr.stdin) {
-            Ok(EvalOutput { value, .. }) => v.must_be_string(&value),
+            Ok(EvalOutput { value, setup_hook }) => {
+                if let Some(hook) = setup_hook {
+                    setup_hooks.push(hook)
+                }
+                v.must_be_string(&value)
+            }
             Err(message) => {
                 v.add_violation(format!("eval error: {}", message));
                 None
@@ -99,7 +114,12 @@ pub fn eval_test_expr(
             .iter()
             .filter_map(|(name, expr)| {
                 match ctx.eval_expr(expr) {
-                    Ok(EvalOutput { value, .. }) => v.in_field(name, |v| v.must_be_string(&value)),
+                    Ok(EvalOutput { value, setup_hook }) => {
+                        if let Some(hook) = setup_hook {
+                            setup_hooks.push(hook)
+                        }
+                        v.in_field(name, |v| v.must_be_string(&value))
+                    }
                     Err(message) => {
                         v.in_field(name, |v| {
                             v.add_violation(format!("eval error: {}", message))
@@ -174,9 +194,9 @@ pub fn eval_test_expr(
             status_matchers,
             stdout_matchers,
             stderr_matchers,
-            setup_hooks: vec![],
+            setup_hooks,
             teardown_hooks: vec![],
-            tmp_dir: None,
+            tmp_dir: ctx.tmp_dir(),
         }])
     } else {
         Err(TestExprError {
@@ -280,13 +300,16 @@ mod tests {
     use super::*;
     mod eval_test_case_expr {
         use crate::{
-            expr::testutil::{env_var_expr, literal_expr},
+            expr::{
+                testutil::{env_var_expr, literal_expr},
+                SetupTmpFileHook,
+            },
             matcher::testutil::{
                 new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
                 VIOLATION_MESSAGE,
             },
             test_case_expr::testutil::TestCaseExprTemplate,
-            tmp_dir::testutil::StubTmpDirFactory,
+            tmp_dir::testutil::{StubTmpDir, StubTmpDirFactory},
         };
 
         use super::*;
@@ -480,7 +503,7 @@ mod tests {
         fn success_cases(
             #[case] title: &str,
             #[case] given: TestCaseExprTemplate,
-            #[case] expected: Vec<TestCase>,
+            #[case] expected: Vec<TestCase<StubTmpDir>>,
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_supplier = StubTmpDirFactory {
@@ -492,6 +515,58 @@ mod tests {
             let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
 
             assert_eq!(Ok(expected), actual, "{}", title);
+        }
+
+        #[test]
+        fn success_case_with_tmp_dir() {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let tmp_dir_path_buf = tmp_dir.path().to_path_buf();
+            let tmp_dir_supplier = StubTmpDirFactory {
+                path_buf: tmp_dir_path_buf.clone(),
+            };
+            let status_mr = new_test_matcher_registry();
+            let stream_mr = new_test_matcher_registry();
+
+            let given = TestCaseExprTemplate {
+                name: Some(literal_expr("test")),
+                command: vec![
+                    literal_expr("cat"),
+                    Expr::TmpFile("input.txt".to_string(), Box::new(literal_expr("hello"))),
+                ],
+                ..Default::default()
+            };
+
+            let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
+
+            let tmp_file_path_buf = tmp_dir_path_buf.join("input.txt");
+
+            let expected = vec![TestCase {
+                name: "test".to_string(),
+                filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                command: vec![
+                    "cat".to_string(),
+                    tmp_file_path_buf.to_str().unwrap().to_string(),
+                ],
+                stdin: "".to_string(),
+                env: vec![],
+                timeout: Duration::from_secs(10),
+                tee_stdout: false,
+                tee_stderr: false,
+                status_matchers: vec![],
+                stdout_matchers: vec![],
+                stderr_matchers: vec![],
+                setup_hooks: vec![Box::new(SetupTmpFileHook {
+                    path: tmp_file_path_buf.clone(),
+                    contents: "hello".to_string(),
+                })],
+                teardown_hooks: vec![],
+                tmp_dir: Some(StubTmpDir {
+                    path_buf: tmp_dir_path_buf,
+                }),
+            }];
+
+            assert_eq!(Ok(expected), actual);
         }
 
         #[rstest]

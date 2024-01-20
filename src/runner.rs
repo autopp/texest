@@ -1,11 +1,12 @@
 use crate::{
     reporter::Reporter,
     test_case::{TestCaseFile, TestResult, TestResultSummary},
+    tmp_dir::TmpDir,
 };
 
-pub fn run_tests(
-    test_case_files: Vec<TestCaseFile>,
-    reporter: &mut Reporter,
+pub fn run_tests<T: TmpDir>(
+    test_case_files: Vec<TestCaseFile<T>>,
+    reporter: &mut Reporter<T>,
 ) -> Result<TestResultSummary, String> {
     reporter.on_run_start()?;
     let test_results = test_case_files

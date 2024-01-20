@@ -1,4 +1,4 @@
-use crate::test_case::TestResultSummary;
+use crate::{test_case::TestResultSummary, tmp_dir::TmpDir};
 
 use super::Formatter;
 
@@ -26,7 +26,7 @@ struct ReportJson<'a> {
     test_results: Vec<TestResultJson<'a>>,
 }
 
-impl Formatter for JsonFormatter {
+impl<T: TmpDir> Formatter<T> for JsonFormatter {
     fn on_run_start(
         &mut self,
         _w: &mut dyn std::io::Write,
@@ -39,7 +39,7 @@ impl Formatter for JsonFormatter {
         &mut self,
         _w: &mut dyn std::io::Write,
         _cm: &super::ColorMarker,
-        _test_case: &crate::test_case::TestCase,
+        _test_case: &crate::test_case::TestCase<T>,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -99,6 +99,7 @@ mod tests {
     use crate::{
         reporter::ColorMarker,
         test_case::{testutil::TestCaseTemplate, TestResult},
+        tmp_dir::testutil::StubTmpDir,
     };
 
     use super::*;
@@ -109,7 +110,11 @@ mod tests {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
 
-        let r = f.on_run_start(&mut buf, &ColorMarker::new(false));
+        let r = <JsonFormatter as Formatter<StubTmpDir>>::on_run_start(
+            &mut f,
+            &mut buf,
+            &ColorMarker::new(false),
+        );
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -119,7 +124,7 @@ mod tests {
     fn on_test_start() {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
-        let test_case = TestCaseTemplate {
+        let test_case = TestCaseTemplate::<StubTmpDir> {
             ..Default::default()
         }
         .build();
@@ -139,7 +144,12 @@ mod tests {
             failures: indexmap![],
         };
 
-        let r = f.on_test_case_end(&mut buf, &ColorMarker::new(false), &test_result);
+        let r = <JsonFormatter as Formatter<StubTmpDir>>::on_test_case_end(
+            &mut f,
+            &mut buf,
+            &ColorMarker::new(false),
+            &test_result,
+        );
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -166,7 +176,12 @@ mod tests {
             ],
         };
 
-        let r = f.on_run_end(&mut buf, &ColorMarker::new(false), &test_result);
+        let r = <JsonFormatter as Formatter<StubTmpDir>>::on_run_end(
+            &mut f,
+            &mut buf,
+            &ColorMarker::new(false),
+            &test_result,
+        );
 
         assert!(r.is_ok());
         assert_eq!(

@@ -30,8 +30,8 @@ pub struct EvalOutput {
 
 #[derive(Debug)]
 pub struct SetupTmpFileHook {
-    path: PathBuf,
-    contents: String,
+    pub path: PathBuf,
+    pub contents: String,
 }
 
 impl LifeCycleHook for SetupTmpFileHook {

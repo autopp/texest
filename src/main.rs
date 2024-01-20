@@ -21,6 +21,7 @@ use clap::{Parser, ValueEnum};
 
 use reporter::{Formatter, Reporter};
 use runner::run_tests;
+use tempfile::TempDir;
 use test_case::TestCaseFile;
 use test_case_expr::eval_test_expr;
 
@@ -163,7 +164,7 @@ fn main() {
         Color::Never => false,
     };
 
-    let mut f: Box<dyn Formatter> = match args.format {
+    let mut f: Box<dyn Formatter<TempDir>> = match args.format {
         Format::Simple => Box::new(reporter::SimpleFormatter {}),
         Format::Json => Box::new(reporter::JsonFormatter {}),
     };

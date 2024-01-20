@@ -36,8 +36,9 @@ pub mod testutil {
 
     use super::*;
 
+    #[derive(Debug)]
     pub struct StubTmpDir {
-        path_buf: PathBuf,
+        pub path_buf: PathBuf,
     }
 
     impl TmpDir for StubTmpDir {
