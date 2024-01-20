@@ -1,10 +1,10 @@
-use crate::{test_case::TestResultSummary, tmp_dir::TmpDir};
+use crate::test_case::TestResultSummary;
 
 use super::Formatter;
 
 pub struct SimpleFormatter {}
 
-impl<T: TmpDir> Formatter<T> for SimpleFormatter {
+impl Formatter for SimpleFormatter {
     fn on_run_start(
         &mut self,
         _w: &mut dyn std::io::Write,
@@ -17,7 +17,7 @@ impl<T: TmpDir> Formatter<T> for SimpleFormatter {
         &mut self,
         _w: &mut dyn std::io::Write,
         _cm: &super::ColorMarker,
-        _test_case: &crate::test_case::TestCase<T>,
+        _test_case: &crate::test_case::TestCase,
     ) -> Result<(), String> {
         Ok(())
     }

@@ -1,63 +1,45 @@
 use std::path::Path;
 
-pub trait TmpDir {
-    fn path(&self) -> &Path;
-}
+use tempfile::TempDir;
 
 pub trait TmpDirSupplier {
-    type T: TmpDir;
-    fn create(&self) -> Result<Self::T, String>;
+    fn create(&mut self) -> Result<&Path, String>;
 }
 
-impl TmpDir for tempfile::TempDir {
-    fn path(&self) -> &Path {
-        self.path()
-    }
+pub struct TmpDirFactory {
+    tmp_dirs: Vec<TempDir>,
 }
-
-pub struct TmpDirFactory {}
 
 impl TmpDirSupplier for TmpDirFactory {
-    type T = tempfile::TempDir;
-    fn create(&self) -> Result<tempfile::TempDir, String> {
-        tempfile::tempdir().map_err(|err| err.to_string())
+    fn create(&mut self) -> Result<&Path, String> {
+        tempfile::tempdir()
+            .map(|tmp_dir| {
+                self.tmp_dirs.push(tmp_dir);
+                self.tmp_dirs.last().unwrap().path()
+            })
+            .map_err(|err| format!("failed to create tmp dir: {}", err))
     }
 }
 
 impl TmpDirFactory {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            tmp_dirs: Vec::new(),
+        }
     }
 }
 
 #[cfg(test)]
 pub mod testutil {
-    use std::path::PathBuf;
-
     use super::*;
 
-    #[derive(Debug)]
-    pub struct StubTmpDir {
-        pub path_buf: PathBuf,
+    pub struct StubTmpDirFactory<'a> {
+        pub tmp_dir: &'a TempDir,
     }
 
-    impl TmpDir for StubTmpDir {
-        fn path(&self) -> &Path {
-            self.path_buf.as_path()
-        }
-    }
-
-    pub struct StubTmpDirFactory {
-        pub path_buf: PathBuf,
-    }
-
-    impl TmpDirSupplier for StubTmpDirFactory {
-        type T = StubTmpDir;
-
-        fn create(&self) -> Result<StubTmpDir, String> {
-            Ok(StubTmpDir {
-                path_buf: self.path_buf.clone(),
-            })
+    impl<'a> TmpDirSupplier for StubTmpDirFactory<'a> {
+        fn create(&mut self) -> Result<&Path, String> {
+            Ok(self.tmp_dir.path())
         }
     }
 }

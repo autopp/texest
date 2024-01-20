@@ -5,7 +5,6 @@ use indexmap::{indexmap, IndexMap};
 use crate::{
     exec::{execute_command, Status},
     matcher::Matcher,
-    tmp_dir::TmpDir,
 };
 
 pub trait LifeCycleHook: Debug {
@@ -33,7 +32,7 @@ impl PartialEq for dyn TeardownHook {
 }
 
 #[derive(Debug)]
-pub struct TestCase<T: TmpDir> {
+pub struct TestCase {
     pub name: String,
     pub filename: String,
     pub path: String,
@@ -48,12 +47,11 @@ pub struct TestCase<T: TmpDir> {
     pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
-    pub tmp_dir: Option<T>,
 }
 
-pub struct TestCaseFile<'a, T: TmpDir> {
+pub struct TestCaseFile<'a> {
     pub filename: String,
-    pub test_cases: Vec<&'a TestCase<T>>,
+    pub test_cases: Vec<&'a TestCase>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -99,7 +97,7 @@ impl TestResultSummary {
     }
 }
 
-impl<T: TmpDir> PartialEq for TestCase<T> {
+impl PartialEq for TestCase {
     fn eq(&self, other: &Self) -> bool {
         if self.name != other.name
             || self.filename != other.filename
@@ -118,18 +116,11 @@ impl<T: TmpDir> PartialEq for TestCase<T> {
             return false;
         }
 
-        match self.tmp_dir {
-            Some(ref tmp_dir) => other
-                .tmp_dir
-                .as_ref()
-                .map(|other_tmp_dir| tmp_dir.path() == other_tmp_dir.path())
-                .unwrap_or(false),
-            None => other.tmp_dir.is_none(),
-        }
+        true
     }
 }
 
-impl<T: TmpDir> TestCase<T> {
+impl TestCase {
     pub fn run(&self) -> TestResult {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -263,7 +254,7 @@ impl<T: TmpDir> TestCase<T> {
 pub mod testutil {
     use serde_yaml::Value;
 
-    use crate::{matcher::Matcher, tmp_dir::TmpDir};
+    use crate::matcher::Matcher;
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
     use super::{LifeCycleHook, SetupHook, TeardownHook, TestCase};
@@ -324,7 +315,7 @@ pub mod testutil {
         }
     }
 
-    pub struct TestCaseTemplate<T: TmpDir> {
+    pub struct TestCaseTemplate {
         pub name: &'static str,
         pub filename: &'static str,
         pub path: &'static str,
@@ -339,11 +330,10 @@ pub mod testutil {
         pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
         pub setup_hooks: Vec<Box<dyn SetupHook>>,
         pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
-        pub tmp_dir: Option<T>,
     }
 
-    impl<T: TmpDir> TestCaseTemplate<T> {
-        pub fn build(self) -> TestCase<T> {
+    impl TestCaseTemplate {
+        pub fn build(self) -> TestCase {
             TestCase {
                 name: self.name.to_string(),
                 filename: self.filename.to_string(),
@@ -363,12 +353,11 @@ pub mod testutil {
                 stderr_matchers: self.stderr_matchers,
                 setup_hooks: self.setup_hooks,
                 teardown_hooks: self.teardown_hooks,
-                tmp_dir: self.tmp_dir,
             }
         }
     }
 
-    impl<T: TmpDir> Default for TestCaseTemplate<T> {
+    impl Default for TestCaseTemplate {
         fn default() -> Self {
             TestCaseTemplate {
                 name: DEFAULT_NAME,
@@ -385,7 +374,6 @@ pub mod testutil {
                 stderr_matchers: vec![],
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
-                tmp_dir: None,
             }
         }
     }
@@ -414,7 +402,6 @@ mod tests {
             use crate::test_case::testutil::{
                 HookHistory, TestCaseTemplate, TestHook, DEFAULT_NAME,
             };
-            use crate::tmp_dir::testutil::StubTmpDir;
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -470,7 +457,7 @@ mod tests {
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()]} })]
             fn when_exec_succeeded(
                 #[case] title: &str,
-                #[case] given: TestCaseTemplate<StubTmpDir>,
+                #[case] given: TestCaseTemplate,
                 #[case] expected: TestResult,
             ) {
                 let actual = given.build().run();
@@ -517,7 +504,7 @@ mod tests {
             ) {
                 let history = Rc::new(RefCell::new(vec![]));
 
-                let given = TestCaseTemplate::<StubTmpDir> {
+                let given = TestCaseTemplate {
                     command: vec!["bash", "-c", "exit 42"],
                     status_matchers: vec![status_matcher],
                     setup_hooks: setup_hooks
@@ -560,7 +547,7 @@ mod tests {
 
             #[test]
             fn when_exec_failed() {
-                let given = TestCaseTemplate::<StubTmpDir> {
+                let given = TestCaseTemplate {
                     command: vec!["_unknown"],
                     ..Default::default()
                 }

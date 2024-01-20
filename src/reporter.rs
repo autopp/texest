@@ -3,10 +3,7 @@ mod simple_formatter;
 
 use std::io::Write;
 
-use crate::{
-    test_case::{TestCase, TestResult, TestResultSummary},
-    tmp_dir::TmpDir,
-};
+use crate::test_case::{TestCase, TestResult, TestResultSummary};
 
 pub enum Color {
     #[allow(dead_code)]
@@ -42,13 +39,13 @@ impl Color {
     }
 }
 
-pub trait Formatter<T: TmpDir> {
+pub trait Formatter {
     fn on_run_start(&mut self, w: &mut dyn Write, cm: &ColorMarker) -> Result<(), String>;
     fn on_test_case_start(
         &mut self,
         w: &mut dyn Write,
         cm: &ColorMarker,
-        test_case: &TestCase<T>,
+        test_case: &TestCase,
     ) -> Result<(), String>;
     fn on_test_case_end(
         &mut self,
@@ -64,7 +61,7 @@ pub trait Formatter<T: TmpDir> {
     ) -> Result<(), String>;
 }
 
-impl<T: TmpDir, F: Formatter<T> + ?Sized> Formatter<T> for Box<F> {
+impl<F: Formatter + ?Sized> Formatter for Box<F> {
     fn on_run_start(&mut self, w: &mut dyn Write, cm: &ColorMarker) -> Result<(), String> {
         (**self).on_run_start(w, cm)
     }
@@ -73,7 +70,7 @@ impl<T: TmpDir, F: Formatter<T> + ?Sized> Formatter<T> for Box<F> {
         &mut self,
         w: &mut dyn Write,
         cm: &ColorMarker,
-        test_case: &TestCase<T>,
+        test_case: &TestCase,
     ) -> Result<(), String> {
         (**self).on_test_case_start(w, cm, test_case)
     }
@@ -97,10 +94,10 @@ impl<T: TmpDir, F: Formatter<T> + ?Sized> Formatter<T> for Box<F> {
     }
 }
 
-pub struct Reporter<'a, 'b, T: TmpDir> {
+pub struct Reporter<'a, 'b> {
     w: &'a mut dyn Write,
     use_color: bool,
-    formatter: &'b mut dyn Formatter<T>,
+    formatter: &'b mut dyn Formatter,
 }
 
 pub struct ColorMarker {
@@ -169,8 +166,8 @@ impl ColorMarker {
     }
 }
 
-impl<'a, 'b, T: TmpDir> Reporter<'a, 'b, T> {
-    pub fn new(w: &'a mut dyn Write, use_color: bool, formatter: &'b mut dyn Formatter<T>) -> Self {
+impl<'a, 'b> Reporter<'a, 'b> {
+    pub fn new(w: &'a mut dyn Write, use_color: bool, formatter: &'b mut dyn Formatter) -> Self {
         Self {
             w,
             use_color,
@@ -183,7 +180,7 @@ impl<'a, 'b, T: TmpDir> Reporter<'a, 'b, T> {
         self.formatter.on_run_start(self.w, &cm)
     }
 
-    pub fn on_test_case_start(&mut self, test_case: &TestCase<T>) -> Result<(), String> {
+    pub fn on_test_case_start(&mut self, test_case: &TestCase) -> Result<(), String> {
         let cm = ColorMarker::new(self.use_color);
         self.formatter.on_test_case_start(self.w, &cm, test_case)
     }

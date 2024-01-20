@@ -37,15 +37,15 @@ pub struct TestCaseExprFile {
     pub test_case_exprs: Vec<TestCaseExpr>,
 }
 
-pub fn eval_test_expr<TS: TmpDirSupplier>(
-    tmp_dir_supplier: &TS,
+pub fn eval_test_expr<T: TmpDirSupplier>(
+    tmp_dir_supplier: &mut T,
     status_mr: &StatusMatcherRegistry,
     stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
-) -> Result<Vec<TestCase<TS::T>>, TestExprError> {
+) -> Result<Vec<TestCase>, TestExprError> {
     let mut v =
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
-    let ctx = Context::new(tmp_dir_supplier);
+    let mut ctx = Context::new(tmp_dir_supplier);
     let mut setup_hooks: Vec<Box<dyn SetupHook>> = vec![];
 
     let command: Vec<String> = v.in_field("command", |v| {
@@ -196,7 +196,6 @@ pub fn eval_test_expr<TS: TmpDirSupplier>(
             stderr_matchers,
             setup_hooks,
             teardown_hooks: vec![],
-            tmp_dir: ctx.tmp_dir(),
         }])
     } else {
         Err(TestExprError {
@@ -309,7 +308,7 @@ mod tests {
                 VIOLATION_MESSAGE,
             },
             test_case_expr::testutil::TestCaseExprTemplate,
-            tmp_dir::testutil::{StubTmpDir, StubTmpDirFactory},
+            tmp_dir::testutil::StubTmpDirFactory,
         };
 
         use super::*;
@@ -342,7 +341,6 @@ mod tests {
             stderr_matchers: vec![],
             setup_hooks: vec![],
             teardown_hooks: vec![],
-            tmp_dir: None,
         }])]
         #[case("with name",
             TestCaseExprTemplate {
@@ -365,7 +363,6 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
-                    tmp_dir: None,
                 },
             ]
         )]
@@ -390,7 +387,6 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
-                    tmp_dir: None,
                 },
             ]
         )]
@@ -415,7 +411,6 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
-                    tmp_dir: None,
                 },
             ]
         )]
@@ -442,7 +437,6 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
-                    tmp_dir: None,
                 },
             ]
         )]
@@ -469,7 +463,6 @@ mod tests {
                     stderr_matchers: vec![],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
-                    tmp_dir: None,
                 },
             ]
         )]
@@ -496,23 +489,25 @@ mod tests {
                     stderr_matchers: vec![TestMatcher::new_success(Value::from(true))],
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
-                    tmp_dir: None,
                 },
             ]
         )]
         fn success_cases(
             #[case] title: &str,
             #[case] given: TestCaseExprTemplate,
-            #[case] expected: Vec<TestCase<StubTmpDir>>,
+            #[case] expected: Vec<TestCase>,
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
-            let tmp_dir_supplier = StubTmpDirFactory {
-                path_buf: tmp_dir.path().to_path_buf(),
-            };
+            let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
-            let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(
+                &mut tmp_dir_supplier,
+                &status_mr,
+                &stream_mr,
+                &given.build(),
+            );
 
             assert_eq!(Ok(expected), actual, "{}", title);
         }
@@ -521,9 +516,7 @@ mod tests {
         fn success_case_with_tmp_dir() {
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_path_buf = tmp_dir.path().to_path_buf();
-            let tmp_dir_supplier = StubTmpDirFactory {
-                path_buf: tmp_dir_path_buf.clone(),
-            };
+            let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
@@ -536,7 +529,12 @@ mod tests {
                 ..Default::default()
             };
 
-            let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(
+                &mut tmp_dir_supplier,
+                &status_mr,
+                &stream_mr,
+                &given.build(),
+            );
 
             let tmp_file_path_buf = tmp_dir_path_buf.join("input.txt");
 
@@ -561,9 +559,6 @@ mod tests {
                     contents: "hello".to_string(),
                 })],
                 teardown_hooks: vec![],
-                tmp_dir: Some(StubTmpDir {
-                    path_buf: tmp_dir_path_buf,
-                }),
             }];
 
             assert_eq!(Ok(expected), actual);
@@ -731,13 +726,16 @@ mod tests {
             #[case] expected_violations: Vec<Violation>,
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
-            let tmp_dir_supplier = StubTmpDirFactory {
-                path_buf: tmp_dir.path().to_path_buf(),
-            };
+            let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
             let status_mr = new_test_matcher_registry();
             let stream_mr = new_test_matcher_registry();
 
-            let actual = eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, &given.build());
+            let actual = eval_test_expr(
+                &mut tmp_dir_supplier,
+                &status_mr,
+                &stream_mr,
+                &given.build(),
+            );
 
             assert_eq!(
                 Err(TestExprError {

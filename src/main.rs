@@ -21,7 +21,7 @@ use clap::{Parser, ValueEnum};
 
 use reporter::{Formatter, Reporter};
 use runner::run_tests;
-use tempfile::TempDir;
+
 use test_case::TestCaseFile;
 use test_case_expr::eval_test_expr;
 
@@ -103,7 +103,7 @@ fn main() {
     let status_mr = matcher::new_status_matcher_registry();
     let stream_mr = matcher::new_stream_matcher_registry();
 
-    let tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
+    let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
 
     let eval_results = oks
         .iter()
@@ -113,7 +113,12 @@ fn main() {
                 .test_case_exprs
                 .iter()
                 .map(|test_case_expr| {
-                    eval_test_expr(&tmp_dir_supplier, &status_mr, &stream_mr, test_case_expr)
+                    eval_test_expr(
+                        &mut tmp_dir_supplier,
+                        &status_mr,
+                        &stream_mr,
+                        test_case_expr,
+                    )
                 })
                 .collect::<Vec<_>>();
             (test_case_expr_file.filename.clone(), test_cases)
@@ -164,7 +169,7 @@ fn main() {
         Color::Never => false,
     };
 
-    let mut f: Box<dyn Formatter<TempDir>> = match args.format {
+    let mut f: Box<dyn Formatter> = match args.format {
         Format::Simple => Box::new(reporter::SimpleFormatter {}),
         Format::Json => Box::new(reporter::JsonFormatter {}),
     };

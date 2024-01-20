@@ -1,4 +1,4 @@
-use crate::{test_case::TestResultSummary, tmp_dir::TmpDir};
+use crate::test_case::TestResultSummary;
 
 use super::Formatter;
 
@@ -26,7 +26,7 @@ struct ReportJson<'a> {
     test_results: Vec<TestResultJson<'a>>,
 }
 
-impl<T: TmpDir> Formatter<T> for JsonFormatter {
+impl Formatter for JsonFormatter {
     fn on_run_start(
         &mut self,
         _w: &mut dyn std::io::Write,
@@ -39,7 +39,7 @@ impl<T: TmpDir> Formatter<T> for JsonFormatter {
         &mut self,
         _w: &mut dyn std::io::Write,
         _cm: &super::ColorMarker,
-        _test_case: &crate::test_case::TestCase<T>,
+        _test_case: &crate::test_case::TestCase,
     ) -> Result<(), String> {
         Ok(())
     }
@@ -99,7 +99,6 @@ mod tests {
     use crate::{
         reporter::ColorMarker,
         test_case::{testutil::TestCaseTemplate, TestResult},
-        tmp_dir::testutil::StubTmpDir,
     };
 
     use super::*;
@@ -110,11 +109,8 @@ mod tests {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
 
-        let r = <JsonFormatter as Formatter<StubTmpDir>>::on_run_start(
-            &mut f,
-            &mut buf,
-            &ColorMarker::new(false),
-        );
+        let r =
+            <JsonFormatter as Formatter>::on_run_start(&mut f, &mut buf, &ColorMarker::new(false));
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -124,7 +120,7 @@ mod tests {
     fn on_test_start() {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
-        let test_case = TestCaseTemplate::<StubTmpDir> {
+        let test_case = TestCaseTemplate {
             ..Default::default()
         }
         .build();
@@ -144,7 +140,7 @@ mod tests {
             failures: indexmap![],
         };
 
-        let r = <JsonFormatter as Formatter<StubTmpDir>>::on_test_case_end(
+        let r = <JsonFormatter as Formatter>::on_test_case_end(
             &mut f,
             &mut buf,
             &ColorMarker::new(false),
@@ -176,7 +172,7 @@ mod tests {
             ],
         };
 
-        let r = <JsonFormatter as Formatter<StubTmpDir>>::on_run_end(
+        let r = <JsonFormatter as Formatter>::on_run_end(
             &mut f,
             &mut buf,
             &ColorMarker::new(false),

@@ -5,7 +5,7 @@ use serde_yaml::Value;
 
 use crate::{
     test_case::{LifeCycleHook, SetupHook},
-    tmp_dir::{TmpDir, TmpDirSupplier},
+    tmp_dir::TmpDirSupplier,
 };
 
 #[derive(Debug, PartialEq, Clone)]
@@ -17,9 +17,9 @@ pub enum Expr {
     TmpFile(String, Box<Expr>),
 }
 
-pub struct Context<'a, T: TmpDir, TS: TmpDirSupplier<T = T>> {
-    tmp_dir_cell: OnceCell<T>,
-    tmp_dir_supplier: &'a TS,
+pub struct Context<'a, T: TmpDirSupplier> {
+    tmp_dir_cell: OnceCell<PathBuf>,
+    tmp_dir_supplier: &'a mut T,
 }
 
 #[derive(Debug, PartialEq)]
@@ -55,15 +55,15 @@ impl SetupHook for SetupTmpFileHook {
     }
 }
 
-impl<'a, T: TmpDir, TS: TmpDirSupplier<T = T>> Context<'a, T, TS> {
-    pub fn new(tmp_dir_supplier: &'a TS) -> Self {
+impl<'a, T: TmpDirSupplier> Context<'a, T> {
+    pub fn new(tmp_dir_supplier: &'a mut T) -> Self {
         Context {
             tmp_dir_cell: OnceCell::new(),
             tmp_dir_supplier,
         }
     }
 
-    pub fn eval_expr(&self, expr: &Expr) -> Result<EvalOutput, String> {
+    pub fn eval_expr(&mut self, expr: &Expr) -> Result<EvalOutput, String> {
         match expr {
             Expr::Literal(v) => Ok(EvalOutput {
                 value: v.clone(),
@@ -95,8 +95,8 @@ impl<'a, T: TmpDir, TS: TmpDirSupplier<T = T>> Context<'a, T, TS> {
                     .as_str()
                     .ok_or("tmp file contents should be string, but not".to_string())
                     .and_then(|contents| {
-                        self.force_tmp_dir().map(|tmp_dir| {
-                            let path = tmp_dir.path().join(filename);
+                        self.force_tmp_dir().map(|tmp_dir_path| {
+                            let path = tmp_dir_path.join(filename);
 
                             EvalOutput {
                                 value: path.to_string_lossy().into(),
@@ -111,13 +111,12 @@ impl<'a, T: TmpDir, TS: TmpDirSupplier<T = T>> Context<'a, T, TS> {
         }
     }
 
-    fn force_tmp_dir(&self) -> Result<&T, String> {
-        self.tmp_dir_cell
-            .get_or_try_init(|| self.tmp_dir_supplier.create())
-    }
-
-    pub fn tmp_dir(self) -> Option<T> {
-        self.tmp_dir_cell.into_inner()
+    fn force_tmp_dir(&mut self) -> Result<&PathBuf, String> {
+        self.tmp_dir_cell.get_or_try_init(|| {
+            self.tmp_dir_supplier
+                .create()
+                .map(|path| path.to_path_buf())
+        })
     }
 }
 
@@ -181,10 +180,8 @@ mod tests {
             set_var(ENV_VAR_NAME, ENV_VAR_VALUE);
 
             let tmp_dir = tempfile::tempdir().unwrap();
-            let tmp_dir_supplier = StubTmpDirFactory {
-                path_buf: tmp_dir.path().to_path_buf(),
-            };
-            let ctx = Context::new(&tmp_dir_supplier);
+            let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut ctx = Context::new(&mut tmp_dir_supplier);
 
             let actual = ctx.eval_expr(&expr);
 
@@ -196,11 +193,9 @@ mod tests {
             let filename = "input.txt";
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_path = tmp_dir.path().to_path_buf();
-            let tmp_dir_suppilier = StubTmpDirFactory {
-                path_buf: tmp_dir_path.clone(),
-            };
+            let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
 
-            let ctx = Context::new(&tmp_dir_suppilier);
+            let mut ctx = Context::new(&mut tmp_dir_suppilier);
 
             let expr = Expr::TmpFile(
                 filename.to_string(),
@@ -229,10 +224,8 @@ mod tests {
                 .into_string()
                 .unwrap();
 
-            let tmp_dir_suppilier = StubTmpDirFactory {
-                path_buf: tmp_dir.path().to_path_buf(),
-            };
-            let ctx = Context::new(&tmp_dir_suppilier);
+            let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut ctx = Context::new(&mut tmp_dir_suppilier);
 
             let expr = Expr::TmpFile(
                 filename.to_string(),
