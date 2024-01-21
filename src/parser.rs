@@ -153,6 +153,15 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
             }),
             "yaml" => Some(Expr::Yaml(value.clone())),
             "json" => Some(Expr::Json(value.clone())),
+            "tmp_file" => v.in_field("$tmp_file", |v| {
+                v.must_be_map(value).map(|m| {
+                    let filename = v.must_have_string(&m, "filename").unwrap_or_default();
+                    let contents = v
+                        .must_have(&m, "contents", parse_expr)
+                        .unwrap_or_else(|| Expr::Literal(Value::from(false)));
+                    Expr::TmpFile(filename, Box::new(contents))
+                })
+            }),
             _ => None,
         })
         .unwrap_or_else(|| Expr::Literal(x.clone()))
@@ -289,6 +298,26 @@ tests:
             env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", env_var_expr("FOO"))],
             ..Default::default()
         }])]
+        #[case(
+            "with command contains tmp_file",
+            "
+tests:
+    - command:
+        - cat
+        - $tmp_file:
+            filename: input.yaml
+            contents:
+                $yaml:
+                    answer: 42", vec![TestCaseExprTemplate {
+                command: vec![
+                    Expr::Literal(Value::from("cat".to_string())),
+                    Expr::TmpFile(
+                        "input.yaml".to_string(),
+                        Box::new(Expr::Yaml(Value::from(mapping(vec![("answer", Value::from(42))])))),
+                    ),
+                ],
+                ..Default::default()
+        }])]
         #[case("with status matcher", "
 tests:
     - command:
@@ -359,6 +388,10 @@ tests:
         #[case("when test stdout matcher contains not string key", "tests: [{command: [echo], expect: {stdout: {true: 42}}}]", vec![("$.tests[0].expect.stdout", "should be string keyed map, but contains Bool(true)")])]
         #[case("when test stderr matcher is not map", "tests: [{command: [echo], expect: {stderr: 42}}]", vec![("$.tests[0].expect.stderr", "should be map, but is uint")])]
         #[case("when test stderr matcher contains not string key", "tests: [{command: [echo], expect: {stderr: {true: 42}}}]", vec![("$.tests[0].expect.stderr", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when $tmp_file is not map", "tests: [{command: [cat, {$tmp_file: 42}]}]", vec![("$.tests[0].command[1].$tmp_file", "should be map, but is uint")])]
+        #[case("when $tmp_file dosen't have filename", "tests: [{command: [cat, {$tmp_file: {contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .filename as string")])]
+        #[case("when $tmp_file has filename as not string", "tests: [{command: [cat, {$tmp_file: {filename: 42, contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file.filename", "should be string, but is uint")])]
+        #[case("when $tmp_file dosen't have contents", "tests: [{command: [cat, {$tmp_file: {filename: input.txt}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .contents")])]
         fn error_case(
             #[case] title: &str,
             #[case] input: &str,
