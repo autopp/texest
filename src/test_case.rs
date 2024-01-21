@@ -107,20 +107,16 @@ impl PartialEq for TestCase {
             || self.timeout != other.timeout
             || self.tee_stdout != other.tee_stdout
             || self.tee_stderr != other.tee_stderr
+            || self.status_matchers != other.status_matchers
+            || self.stdout_matchers != other.stdout_matchers
+            || self.stderr_matchers != other.stderr_matchers
+            || self.setup_hooks != other.setup_hooks
+            || self.teardown_hooks != other.teardown_hooks
         {
             return false;
         }
 
-        if self.status_matchers.len() != other.status_matchers.len() {
-            return false;
-        }
-
-        self.status_matchers
-            .iter()
-            .zip(other.status_matchers.iter())
-            .all(|(self_status_matcher, other_status_matcher)| {
-                self_status_matcher == other_status_matcher
-            })
+        true
     }
 }
 

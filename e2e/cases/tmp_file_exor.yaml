@@ -1,0 +1,41 @@
+tests:
+  - name: '$tmp_file should evaluated to temporary file path'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - $tmp_file:
+                  filename: "input.txt"
+                  contents: hello
+            expect:
+              status:
+                eq: 0
+              stdout:
+                contain: '/input.txt'
+    expect:
+      status:
+        eq: 0
+  - name: '$tmp_file should create temporary file with given contents'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - cat
+              - $tmp_file:
+                  filename: "input.txt"
+                  contents: hello
+            expect:
+              status:
+                eq: 0
+              stdout:
+                eq: "hello"
+    expect:
+      status:
+        eq: 0

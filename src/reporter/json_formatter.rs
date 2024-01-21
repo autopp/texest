@@ -109,7 +109,8 @@ mod tests {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
 
-        let r = f.on_run_start(&mut buf, &ColorMarker::new(false));
+        let r =
+            <JsonFormatter as Formatter>::on_run_start(&mut f, &mut buf, &ColorMarker::new(false));
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -139,7 +140,12 @@ mod tests {
             failures: indexmap![],
         };
 
-        let r = f.on_test_case_end(&mut buf, &ColorMarker::new(false), &test_result);
+        let r = <JsonFormatter as Formatter>::on_test_case_end(
+            &mut f,
+            &mut buf,
+            &ColorMarker::new(false),
+            &test_result,
+        );
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -166,7 +172,12 @@ mod tests {
             ],
         };
 
-        let r = f.on_run_end(&mut buf, &ColorMarker::new(false), &test_result);
+        let r = <JsonFormatter as Formatter>::on_run_end(
+            &mut f,
+            &mut buf,
+            &ColorMarker::new(false),
+            &test_result,
+        );
 
         assert!(r.is_ok());
         assert_eq!(

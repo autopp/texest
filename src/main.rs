@@ -8,6 +8,7 @@ mod reporter;
 mod runner;
 mod test_case;
 mod test_case_expr;
+mod tmp_dir;
 mod validator;
 
 use std::{
@@ -20,6 +21,7 @@ use clap::{Parser, ValueEnum};
 
 use reporter::{Formatter, Reporter};
 use runner::run_tests;
+
 use test_case::TestCaseFile;
 use test_case_expr::eval_test_expr;
 
@@ -101,6 +103,8 @@ fn main() {
     let status_mr = matcher::new_status_matcher_registry();
     let stream_mr = matcher::new_stream_matcher_registry();
 
+    let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
+
     let eval_results = oks
         .iter()
         .map(|ok| {
@@ -108,7 +112,14 @@ fn main() {
             let test_cases = test_case_expr_file
                 .test_case_exprs
                 .iter()
-                .map(|test_case_expr| eval_test_expr(&status_mr, &stream_mr, test_case_expr))
+                .map(|test_case_expr| {
+                    eval_test_expr(
+                        &mut tmp_dir_supplier,
+                        &status_mr,
+                        &stream_mr,
+                        test_case_expr,
+                    )
+                })
                 .collect::<Vec<_>>();
             (test_case_expr_file.filename.clone(), test_cases)
         })
