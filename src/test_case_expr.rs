@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use indexmap::IndexMap;
+use indexmap::{indexmap, IndexMap};
 
 use crate::{
     expr::{Context, EvalOutput, Expr},
     matcher::{StatusMatcherRegistry, StreamMatcherRegistry},
-    test_case::{SetupHook, TestCase},
+    test_case::{Process, SetupHook, TestCase},
     tmp_dir::TmpDirSupplier,
     validator::{Validator, Violation},
 };
@@ -13,6 +13,16 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub struct TestExprError {
     pub violations: Vec<Violation>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TestCaseProcessExpr {
+    pub command: Vec<Expr>,
+    pub stdin: Expr,
+    pub env: Vec<(String, Expr)>,
+    pub timeout: Duration,
+    pub tee_stdout: bool,
+    pub tee_stderr: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -185,12 +195,16 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
             name,
             filename: test_case_expr.filename.clone(),
             path: test_case_expr.path.clone(),
-            command,
-            stdin,
-            env,
-            timeout: test_case_expr.timeout,
-            tee_stdout: test_case_expr.tee_stdout,
-            tee_stderr: test_case_expr.tee_stderr,
+            processes: indexmap! {
+                "main".to_string() => Process {
+                    command,
+                    stdin,
+                    env,
+                    timeout: test_case_expr.timeout,
+                    tee_stdout: test_case_expr.tee_stdout,
+                    tee_stderr: test_case_expr.tee_stderr,
+                }
+            },
             status_matchers,
             stdout_matchers,
             stderr_matchers,
@@ -330,12 +344,16 @@ mod tests {
             name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
             filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
             path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-            command: vec!["echo".to_string(), "hello".to_string()],
-            stdin: "".to_string(),
-            env: vec![],
-            timeout: Duration::from_secs(10),
-            tee_stdout: false,
-            tee_stderr: false,
+            processes: indexmap! {
+                "main".to_string() => Process {
+                    command: vec!["echo".to_string(), "hello".to_string()],
+                    stdin: "".to_string(),
+                    env: vec![],
+                    timeout: Duration::from_secs(10),
+                    tee_stdout: false,
+                    tee_stderr: false,
+                }
+            },
             status_matchers: vec![],
             stdout_matchers: vec![],
             stderr_matchers: vec![],
@@ -352,12 +370,16 @@ mod tests {
                     name: "mytest".to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                    command: vec!["echo".to_string(), "hello".to_string()],
-                    stdin: "".to_string(),
-                    env: vec![],
-                    timeout: Duration::from_secs(10),
-                    tee_stdout: false,
-                    tee_stderr: false,
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                        }
+                    },
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
@@ -376,12 +398,16 @@ mod tests {
                     name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                    command: vec!["echo".to_string(), "hello".to_string()],
-                    stdin: "hello".to_string(),
-                    env: vec![],
-                    timeout: Duration::from_secs(10),
-                    tee_stdout: false,
-                    tee_stderr: false,
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "hello".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                        }
+                    },
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
@@ -400,12 +426,16 @@ mod tests {
                     name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                    command: vec!["echo".to_string(), "hello".to_string()],
-                    stdin: "".to_string(),
-                    env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
-                    timeout: Duration::from_secs(10),
-                    tee_stdout: false,
-                    tee_stderr: false,
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
+                            timeout: Duration::from_secs(10),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                        }
+                    },
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
@@ -426,12 +456,16 @@ mod tests {
                     name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                    command: vec!["echo".to_string(), "hello".to_string()],
-                    stdin: "".to_string(),
-                    env: vec![],
-                    timeout: Duration::from_secs(10),
-                    tee_stdout: false,
-                    tee_stderr: false,
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                        }
+                    },
                     status_matchers: vec!(TestMatcher::new_success(Value::from(true))),
                     stdout_matchers: vec![],
                     stderr_matchers: vec![],
@@ -452,12 +486,16 @@ mod tests {
                     name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                    command: vec!["echo".to_string(), "hello".to_string()],
-                    stdin: "".to_string(),
-                    env: vec![],
-                    timeout: Duration::from_secs(10),
-                    tee_stdout: false,
-                    tee_stderr: false,
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                        }
+                    },
                     status_matchers: vec![],
                     stdout_matchers: vec![TestMatcher::new_success(Value::from(true))],
                     stderr_matchers: vec![],
@@ -478,12 +516,16 @@ mod tests {
                     name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
                     filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                    command: vec!["echo".to_string(), "hello".to_string()],
-                    stdin: "".to_string(),
-                    env: vec![],
-                    timeout: Duration::from_secs(10),
-                    tee_stdout: false,
-                    tee_stderr: false,
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                        }
+                    },
                     status_matchers: vec![],
                     stdout_matchers: vec![],
                     stderr_matchers: vec![TestMatcher::new_success(Value::from(true))],
@@ -542,15 +584,19 @@ mod tests {
                 name: "test".to_string(),
                 filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
                 path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
-                command: vec![
-                    "cat".to_string(),
-                    tmp_file_path_buf.to_str().unwrap().to_string(),
-                ],
-                stdin: "".to_string(),
-                env: vec![],
-                timeout: Duration::from_secs(10),
-                tee_stdout: false,
-                tee_stderr: false,
+                processes: indexmap! {
+                    "main".to_string() => Process {
+                        command: vec![
+                            "cat".to_string(),
+                            tmp_file_path_buf.to_str().unwrap().to_string(),
+                        ],
+                        stdin: "".to_string(),
+                        env: vec![],
+                        timeout: Duration::from_secs(10),
+                        tee_stdout: false,
+                        tee_stderr: false,
+                    }
+                },
                 status_matchers: vec![],
                 stdout_matchers: vec![],
                 stderr_matchers: vec![],
