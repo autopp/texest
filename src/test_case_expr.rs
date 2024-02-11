@@ -700,7 +700,7 @@ mod tests {
                 violation(".name", "eval error: env var _undefined is not defined"),
             ]
         )]
-        #[case("with with not string name",
+        #[case("with not string name",
             TestCaseExprTemplate {
                 name: Some(literal_expr(true)),
                 ..Default::default()
@@ -720,6 +720,21 @@ mod tests {
             vec![
                 violation(".command[0]", "should be string, but is bool"),
                 violation(".command[1]", "eval error: env var _undefined is not defined"),
+            ]
+        )]
+        #[case("with eval error in multiple processess's command",
+            TestCaseExprTemplate {
+                processes: ProcessesExprTemplate::Multi(indexmap! {
+                    "process1" => ProcessExprTemplate {
+                        command: vec![literal_expr(true), env_var_expr("_undefined")],
+                        ..Default::default()
+                    }
+                }),
+                ..Default::default()
+            },
+            vec![
+                violation(".process1.command[0]", "should be string, but is bool"),
+                violation(".process1.command[1]", "eval error: env var _undefined is not defined"),
             ]
         )]
         #[case("with eval error in env",

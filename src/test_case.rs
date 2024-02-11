@@ -143,6 +143,7 @@ impl TestCase {
             };
         }
 
+        // FIXME: execute all processes
         let process = self.processes.iter().next().unwrap().1;
 
         let exec_result = rt

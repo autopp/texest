@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use indexmap::IndexMap;
+use indexmap::{indexmap, IndexMap};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -57,12 +57,8 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
         .and_then(|root| {
             v.must_have_seq(&root, "tests", |v, tests| {
                 v.map_seq(tests, |v, test| {
-                    v.must_be_map(test).and_then(|test| {
+                    v.must_be_map(test).map(|test| {
                         let name = v.may_have(&test, "name", parse_expr);
-                        let stdin = v.may_have(&test, "stdin", parse_expr).unwrap_or(Expr::Literal(Value::from("")));
-                        let timeout = v.may_have_uint(&test, "timeout").unwrap_or(DEFAULT_TIMEOUT);
-                        let tee_stdout = v.may_have_bool(&test, "teeStdout").unwrap_or(false);
-                        let tee_stderr = v.may_have_bool(&test, "teeStderr").unwrap_or(false);
                         let (status_matchers, stdout_matchers, stderr_matchers) = v
                             .may_have_map(&test, "expect", |v, expect| {
                                 let status_matchers = v
@@ -77,45 +73,43 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                                 (status_matchers, stdout_matchers, stderr_matchers)
                             })
                             .unwrap_or((IndexMap::new(), IndexMap::new(), IndexMap::new()));
-                        let env: Vec<(String, Expr)> = v.may_have_map(&test, "env", |v, env| {
-                            env.into_iter()
-                                .filter_map(|(name, value)| {
-                                    if !VAR_NAME_RE.is_match(name) {
-                                        v.add_violation("should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)");
-                                        return None
-                                    }
-                                    Some((name.to_string(), parse_expr(v, value)))
-                                })
-                                .collect::<Vec<_>>()
-                        }).unwrap_or(vec![]);
 
-                        v.must_have_seq(&test, "command", |v, command| {
-                            if command.is_empty() {
-                                v.add_violation("should not be empty");
-                                None
-                            } else {
-                                v.map_seq(command, |v, x| Some(parse_expr(v, x)))
-                            }
-                        })
-                        .flatten()
-                        .map(|command| TestCaseExpr {
+                        let processes: ProcessesExpr = v
+                            .may_have(&test, "processes", |v, processes| {
+                                v.must_be_map(processes)
+                                    .map(|processes| {
+                                        if processes.is_empty() {
+                                            v.add_violation("should not be empty");
+                                        }
+                                        ProcessesExpr::Multi(
+                                            processes
+                                                .iter()
+                                                .filter_map(|(name, process)| {
+                                                    v.in_field(name, |v| {
+                                                        v.must_be_map(process).map(|process| {
+                                                            (
+                                                                name.to_string(),
+                                                                parse_process(v, &process),
+                                                            )
+                                                        })
+                                                    })
+                                                })
+                                                .collect(),
+                                        )
+                                    })
+                                    .unwrap_or_else(|| ProcessesExpr::Multi(indexmap! {}))
+                            })
+                            .unwrap_or_else(|| ProcessesExpr::Single(parse_process(v, &test)));
+
+                        TestCaseExpr {
                             name,
                             filename: v.filename.clone(),
                             path: v.current_path(),
-                            processes: ProcessesExpr::Single(
-                                ProcessExpr {
-                                    command,
-                                    stdin,
-                                    env,
-                                    timeout: Duration::from_secs(timeout),
-                                    tee_stdout,
-                                    tee_stderr,
-                                }
-                            ),
+                            processes,
                             status_matchers,
                             stdout_matchers,
                             stderr_matchers,
-                        })
+                        }
                     })
                 })
             })
@@ -142,6 +136,50 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
             "parse error",
             v.violations,
         )),
+    }
+}
+
+fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
+    let command = v
+        .must_have_seq(m, "command", |v, command| {
+            if command.is_empty() {
+                v.add_violation("should not be empty");
+                None
+            } else {
+                v.map_seq(command, |v, x| Some(parse_expr(v, x)))
+            }
+        })
+        .flatten()
+        .unwrap_or_default();
+    let stdin = v
+        .may_have(m, "stdin", parse_expr)
+        .unwrap_or(Expr::Literal(Value::from("")));
+    let env: Vec<(String, Expr)> = v
+        .may_have_map(m, "env", |v, env| {
+            env.into_iter()
+                .filter_map(|(name, value)| {
+                    if !VAR_NAME_RE.is_match(name) {
+                        v.add_violation(
+                            "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)",
+                        );
+                        return None;
+                    }
+                    Some((name.to_string(), parse_expr(v, value)))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or(vec![]);
+    let timeout = v.may_have_uint(m, "timeout").unwrap_or(DEFAULT_TIMEOUT);
+    let tee_stdout = v.may_have_bool(m, "teeStdout").unwrap_or(false);
+    let tee_stderr = v.may_have_bool(m, "teeStderr").unwrap_or(false);
+
+    ProcessExpr {
+        command,
+        stdin,
+        env,
+        timeout: Duration::from_secs(timeout),
+        tee_stdout,
+        tee_stderr,
     }
 }
 
@@ -364,6 +402,36 @@ tests:
                 ),
                 ..Default::default()
         }])]
+        #[case("with multiple processes", "
+tests:
+    - processes:
+        process1:
+            command:
+                - echo
+                - hello
+        process2:
+            command:
+                - echo
+                - world
+    ", vec![TestCaseExprTemplate {
+            processes: ProcessesExprTemplate::Multi(indexmap! {
+                "process1" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("hello"),
+                    ],
+                    ..Default::default()
+                },
+                "process2" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("world"),
+                    ],
+                    ..Default::default()
+                },
+            }),
+            ..Default::default()
+        }])]
         #[case("with status matcher", "
 tests:
     - command:
@@ -423,6 +491,10 @@ tests:
         #[case("when test dosen't have .command", "tests: [{}]", vec![("$.tests[0]", "should have .command as seq")])]
         #[case("when test command is not seq", "tests: [{command: 42}]", vec![("$.tests[0].command", "should be seq, but is uint")])]
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
+        #[case("when multi processes is not map", "tests: [processes: true]", vec![("$.tests[0].processes", "should be map, but is bool")])]
+        #[case("when multi processes is empty", "tests: [processes: {}]", vec![("$.tests[0].processes", "should not be empty")])]
+        #[case("when some process is not map", "tests: [processes: {proc1: true}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
+        #[case("when some process's command is empty", "tests: [processes: {proc1: {command: []}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
         #[case("when test env is not map", "tests: [{command: [echo], env: 42}]", vec![("$.tests[0].env", "should be map, but is uint")])]
         #[case("when test env contains not string key", "tests: [{command: [echo], env: {true: hello}}]", vec![("$.tests[0].env", "should be string keyed map, but contains Bool(true)")])]
