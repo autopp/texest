@@ -16,7 +16,7 @@ pub struct TestExprError {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TestCaseProcessExpr {
+pub struct ProcessExpr {
     pub command: Vec<Expr>,
     pub stdin: Expr,
     pub env: Vec<(String, Expr)>,
@@ -26,16 +26,17 @@ pub struct TestCaseProcessExpr {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ProcessesExpr {
+    Single(ProcessExpr),
+    Multi(IndexMap<String, ProcessExpr>),
+}
+
+#[derive(Debug, PartialEq)]
 pub struct TestCaseExpr {
     pub name: Option<Expr>,
     pub filename: String,
     pub path: String,
-    pub command: Vec<Expr>,
-    pub stdin: Expr,
-    pub env: Vec<(String, Expr)>,
-    pub timeout: Duration,
-    pub tee_stdout: bool,
-    pub tee_stderr: bool,
+    pub processes: ProcessesExpr,
     pub status_matchers: IndexMap<String, Expr>,
     pub stdout_matchers: IndexMap<String, Expr>,
     pub stderr_matchers: IndexMap<String, Expr>,
@@ -46,6 +47,8 @@ pub struct TestCaseExprFile {
     pub filename: String,
     pub test_case_exprs: Vec<TestCaseExpr>,
 }
+
+const DEFAULT_PROCESS_NAME: &str = "main";
 
 pub fn eval_test_expr<T: TmpDirSupplier>(
     tmp_dir_supplier: &mut T,
@@ -58,26 +61,22 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     let mut ctx = Context::new(tmp_dir_supplier);
     let mut setup_hooks: Vec<Box<dyn SetupHook>> = vec![];
 
-    let command: Vec<String> = v.in_field("command", |v| {
-        test_case_expr
-            .command
-            .clone()
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, x)| match ctx.eval_expr(&x) {
-                Ok(EvalOutput { value, setup_hook }) => {
-                    if let Some(hook) = setup_hook {
-                        setup_hooks.push(hook)
-                    }
-                    v.in_index(i, |v| v.must_be_string(&value))
-                }
-                Err(message) => {
-                    v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
-                    None
-                }
+    let processes = match &test_case_expr.processes {
+        ProcessesExpr::Single(process_expr) => {
+            indexmap! { DEFAULT_PROCESS_NAME.to_string() => eval_process_expr(&mut v, &mut ctx, &mut setup_hooks, process_expr) }
+        }
+        ProcessesExpr::Multi(process_exprs) => process_exprs
+            .iter()
+            .map(|(name, process_expr)| {
+                (
+                    name.clone(),
+                    v.in_field(name, |v| {
+                        eval_process_expr(v, &mut ctx, &mut setup_hooks, process_expr)
+                    }),
+                )
             })
-            .collect()
-    });
+            .collect(),
+    };
 
     let name = if let Some(name_expr) = &test_case_expr.name {
         v.in_field("name", |v| match ctx.eval_expr(name_expr) {
@@ -94,7 +93,11 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
         })
     } else {
         Some(
-            command
+            processes
+                .values()
+                .last()
+                .unwrap()
+                .command
                 .iter()
                 .map(|x| yash_quote::quote(x))
                 .collect::<Vec<_>>()
@@ -102,45 +105,6 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
         )
     }
     .unwrap_or("".to_string());
-
-    let stdin = v
-        .in_field("stdin", |v| match ctx.eval_expr(&test_case_expr.stdin) {
-            Ok(EvalOutput { value, setup_hook }) => {
-                if let Some(hook) = setup_hook {
-                    setup_hooks.push(hook)
-                }
-                v.must_be_string(&value)
-            }
-            Err(message) => {
-                v.add_violation(format!("eval error: {}", message));
-                None
-            }
-        })
-        .unwrap_or("".to_string());
-
-    let env: Vec<(String, String)> = v.in_field("env", |v| {
-        test_case_expr
-            .env
-            .iter()
-            .filter_map(|(name, expr)| {
-                match ctx.eval_expr(expr) {
-                    Ok(EvalOutput { value, setup_hook }) => {
-                        if let Some(hook) = setup_hook {
-                            setup_hooks.push(hook)
-                        }
-                        v.in_field(name, |v| v.must_be_string(&value))
-                    }
-                    Err(message) => {
-                        v.in_field(name, |v| {
-                            v.add_violation(format!("eval error: {}", message))
-                        });
-                        None
-                    }
-                }
-                .map(|value| (name.clone(), value))
-            })
-            .collect()
-    });
 
     let status_matchers = v.in_field("expect.status", |v| {
         test_case_expr
@@ -195,16 +159,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
             name,
             filename: test_case_expr.filename.clone(),
             path: test_case_expr.path.clone(),
-            processes: indexmap! {
-                "main".to_string() => Process {
-                    command,
-                    stdin,
-                    env,
-                    timeout: test_case_expr.timeout,
-                    tee_stdout: test_case_expr.tee_stdout,
-                    tee_stderr: test_case_expr.tee_stderr,
-                }
-            },
+            processes,
             status_matchers,
             stdout_matchers,
             stderr_matchers,
@@ -218,6 +173,82 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     }
 }
 
+fn eval_process_expr<T: TmpDirSupplier>(
+    v: &mut Validator,
+    ctx: &mut Context<'_, T>,
+    setup_hooks: &mut Vec<Box<dyn SetupHook>>,
+    process_expr: &ProcessExpr,
+) -> Process {
+    let command: Vec<String> = v.in_field("command", |v| {
+        process_expr
+            .command
+            .clone()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, x)| match ctx.eval_expr(&x) {
+                Ok(EvalOutput { value, setup_hook }) => {
+                    if let Some(hook) = setup_hook {
+                        setup_hooks.push(hook)
+                    }
+                    v.in_index(i, |v| v.must_be_string(&value))
+                }
+                Err(message) => {
+                    v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
+                    None
+                }
+            })
+            .collect()
+    });
+
+    let stdin = v
+        .in_field("stdin", |v| match ctx.eval_expr(&process_expr.stdin) {
+            Ok(EvalOutput { value, setup_hook }) => {
+                if let Some(hook) = setup_hook {
+                    setup_hooks.push(hook)
+                }
+                v.must_be_string(&value)
+            }
+            Err(message) => {
+                v.add_violation(format!("eval error: {}", message));
+                None
+            }
+        })
+        .unwrap_or("".to_string());
+
+    let env: Vec<(String, String)> = v.in_field("env", |v| {
+        process_expr
+            .env
+            .iter()
+            .filter_map(|(name, expr)| {
+                match ctx.eval_expr(expr) {
+                    Ok(EvalOutput { value, setup_hook }) => {
+                        if let Some(hook) = setup_hook {
+                            setup_hooks.push(hook)
+                        }
+                        v.in_field(name, |v| v.must_be_string(&value))
+                    }
+                    Err(message) => {
+                        v.in_field(name, |v| {
+                            v.add_violation(format!("eval error: {}", message))
+                        });
+                        None
+                    }
+                }
+                .map(|value| (name.clone(), value))
+            })
+            .collect()
+    });
+
+    Process {
+        command,
+        stdin,
+        env,
+        timeout: process_expr.timeout,
+        tee_stdout: process_expr.tee_stdout,
+        tee_stderr: process_expr.tee_stderr,
+    }
+}
+
 #[cfg(test)]
 pub mod testutil {
     use std::time::Duration;
@@ -228,18 +259,70 @@ pub mod testutil {
 
     use crate::expr::testutil::*;
 
+    use super::ProcessExpr;
+    use super::ProcessesExpr;
     use super::TestCaseExpr;
 
-    pub struct TestCaseExprTemplate {
-        pub name: Option<Expr>,
-        pub filename: &'static str,
-        pub path: &'static str,
+    pub struct ProcessExprTemplate {
         pub command: Vec<Expr>,
         pub stdin: Expr,
         pub env: Vec<(&'static str, Expr)>,
         pub timeout: u64,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
+    }
+
+    impl ProcessExprTemplate {
+        pub fn build(&self) -> ProcessExpr {
+            ProcessExpr {
+                command: self.command.clone(),
+                stdin: self.stdin.clone(),
+                env: self
+                    .env
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
+                timeout: Duration::from_secs(self.timeout),
+                tee_stdout: self.tee_stdout,
+                tee_stderr: self.tee_stderr,
+            }
+        }
+    }
+
+    impl Default for ProcessExprTemplate {
+        fn default() -> Self {
+            Self {
+                command: TestCaseExprTemplate::default_command(),
+                stdin: literal_expr(""),
+                env: vec![],
+                timeout: 10,
+                tee_stdout: false,
+                tee_stderr: false,
+            }
+        }
+    }
+
+    pub enum ProcessesExprTemplate {
+        Single(ProcessExprTemplate),
+        Multi(IndexMap<&'static str, ProcessExprTemplate>),
+    }
+
+    impl ProcessesExprTemplate {
+        pub fn build(&self) -> ProcessesExpr {
+            match self {
+                ProcessesExprTemplate::Single(p) => ProcessesExpr::Single(p.build()),
+                ProcessesExprTemplate::Multi(ps) => ProcessesExpr::Multi(
+                    ps.iter().map(|(k, v)| (k.to_string(), v.build())).collect(),
+                ),
+            }
+        }
+    }
+
+    pub struct TestCaseExprTemplate {
+        pub name: Option<Expr>,
+        pub filename: &'static str,
+        pub path: &'static str,
+        pub processes: ProcessesExprTemplate,
         pub status_matchers: IndexMap<&'static str, Expr>,
         pub stdout_matchers: IndexMap<&'static str, Expr>,
         pub stderr_matchers: IndexMap<&'static str, Expr>,
@@ -259,16 +342,7 @@ pub mod testutil {
                 name: self.name.clone(),
                 filename: self.filename.to_string(),
                 path: self.path.to_string(),
-                command: self.command.clone(),
-                stdin: self.stdin.clone(),
-                env: self
-                    .env
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.clone()))
-                    .collect(),
-                timeout: Duration::from_secs(self.timeout),
-                tee_stdout: self.tee_stdout,
-                tee_stderr: self.tee_stderr,
+                processes: self.processes.build(),
                 status_matchers: self
                     .status_matchers
                     .iter()
@@ -294,12 +368,7 @@ pub mod testutil {
                 name: None,
                 filename: TestCaseExprTemplate::DEFAULT_FILENAME,
                 path: TestCaseExprTemplate::DEFAULT_PATH,
-                command: TestCaseExprTemplate::default_command(),
-                stdin: literal_expr(""),
-                env: vec![],
-                timeout: 10,
-                tee_stdout: false,
-                tee_stderr: false,
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate::default()),
                 status_matchers: IndexMap::new(),
                 stdout_matchers: IndexMap::new(),
                 stderr_matchers: IndexMap::new(),
@@ -321,7 +390,9 @@ mod tests {
                 new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
                 VIOLATION_MESSAGE,
             },
-            test_case_expr::testutil::TestCaseExprTemplate,
+            test_case_expr::testutil::{
+                ProcessExprTemplate, ProcessesExprTemplate, TestCaseExprTemplate,
+            },
             tmp_dir::testutil::StubTmpDirFactory,
         };
 
@@ -390,7 +461,10 @@ mod tests {
         )]
         #[case("with stdin case",
             TestCaseExprTemplate {
-                stdin: literal_expr("hello"),
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    stdin: literal_expr("hello"),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             vec![
@@ -418,7 +492,10 @@ mod tests {
         )]
         #[case("with env case",
             TestCaseExprTemplate {
-                env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", literal_expr("world"))],
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", literal_expr("world"))],
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             vec![
@@ -564,10 +641,13 @@ mod tests {
 
             let given = TestCaseExprTemplate {
                 name: Some(literal_expr("test")),
-                command: vec![
-                    literal_expr("cat"),
-                    Expr::TmpFile("input.txt".to_string(), Box::new(literal_expr("hello"))),
-                ],
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("cat"),
+                        Expr::TmpFile("input.txt".to_string(), Box::new(literal_expr("hello"))),
+                    ],
+                    ..Default::default()
+                }),
                 ..Default::default()
             };
 
@@ -631,7 +711,10 @@ mod tests {
         )]
         #[case("with eval error in command",
             TestCaseExprTemplate {
-                command: vec![literal_expr(true), env_var_expr("_undefined")],
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    command: vec![literal_expr(true), env_var_expr("_undefined")],
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             vec![
@@ -641,7 +724,10 @@ mod tests {
         )]
         #[case("with eval error in env",
             TestCaseExprTemplate {
-                env: vec![("MESSAGE1", literal_expr(true)), ("MESSAGE2", env_var_expr("_undefined"))],
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    env: vec![("MESSAGE1", literal_expr(true)), ("MESSAGE2", env_var_expr("_undefined"))],
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             vec![
@@ -651,7 +737,10 @@ mod tests {
         )]
         #[case("with not string stdin",
             TestCaseExprTemplate {
-                stdin: literal_expr(true),
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    stdin: literal_expr(true),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             vec![
@@ -660,7 +749,10 @@ mod tests {
         )]
         #[case("with eval error in stdin",
             TestCaseExprTemplate {
-                stdin: env_var_expr("_undefined"),
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    stdin: env_var_expr("_undefined"),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             vec![

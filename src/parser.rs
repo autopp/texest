@@ -9,7 +9,7 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
-    test_case_expr::{TestCaseExpr, TestCaseExprFile},
+    test_case_expr::{ProcessExpr, ProcessesExpr, TestCaseExpr, TestCaseExprFile},
     validator::{Validator, Violation},
 };
 
@@ -102,12 +102,16 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             name,
                             filename: v.filename.clone(),
                             path: v.current_path(),
-                            command,
-                            stdin,
-                            env,
-                            timeout: Duration::from_secs(timeout),
-                            tee_stdout,
-                            tee_stderr,
+                            processes: ProcessesExpr::Single(
+                                ProcessExpr {
+                                    command,
+                                    stdin,
+                                    env,
+                                    timeout: Duration::from_secs(timeout),
+                                    tee_stdout,
+                                    tee_stderr,
+                                }
+                            ),
                             status_matchers,
                             stdout_matchers,
                             stderr_matchers,
@@ -186,7 +190,9 @@ mod tests {
                 testutil::{env_var_expr, literal_expr},
                 Expr,
             },
-            test_case_expr::testutil::TestCaseExprTemplate,
+            test_case_expr::testutil::{
+                ProcessExprTemplate, ProcessesExprTemplate, TestCaseExprTemplate,
+            },
         };
 
         use super::*;
@@ -229,10 +235,15 @@ tests:
     - command:
         - echo
         - $env: MESSAGE", vec![TestCaseExprTemplate {
-            command: vec![
-                Expr::Literal(Value::from("echo".to_string())),
-                Expr::EnvVar("MESSAGE".to_string(), None),
-            ],
+            processes: ProcessesExprTemplate::Single(
+                ProcessExprTemplate {
+                    command: vec![
+                        Expr::Literal(Value::from("echo".to_string())),
+                        Expr::EnvVar("MESSAGE".to_string(), None),
+                    ],
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with command contains timeout", "
@@ -241,7 +252,12 @@ tests:
         - echo
         - hello
       timeout: 5", vec![TestCaseExprTemplate {
-            timeout: 5,
+            processes: ProcessesExprTemplate::Single(
+                ProcessExprTemplate {
+                    timeout: 5,
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with command cotains tee_stdout & tee_stderr", "
@@ -251,8 +267,13 @@ tests:
         - hello
       teeStdout: true
       teeStderr: true", vec![TestCaseExprTemplate {
-            tee_stdout: true,
-            tee_stderr: true,
+            processes: ProcessesExprTemplate::Single(
+            ProcessExprTemplate {
+                    tee_stdout: true,
+                    tee_stderr: true,
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with command contains simple stdin", "
@@ -260,8 +281,13 @@ tests:
     - command:
         - cat
       stdin: hello", vec![TestCaseExprTemplate {
-            command: vec![Expr::Literal(Value::from("cat".to_string()))],
-            stdin: literal_expr("hello"),
+            processes: ProcessesExprTemplate::Single(
+                ProcessExprTemplate {
+                    command: vec![Expr::Literal(Value::from("cat".to_string()))],
+                    stdin: literal_expr("hello"),
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with command contains yaml stdin", "
@@ -271,8 +297,13 @@ tests:
       stdin:
         $yaml:
           message: hello", vec![TestCaseExprTemplate {
-            command: vec![Expr::Literal(Value::from("cat".to_string()))],
-            stdin: Expr::Yaml(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+            processes: ProcessesExprTemplate::Single(
+                ProcessExprTemplate {
+                    command: vec![Expr::Literal(Value::from("cat".to_string()))],
+                    stdin: Expr::Yaml(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with command contains json stdin", "
@@ -282,8 +313,13 @@ tests:
       stdin:
         $json:
           message: hello", vec![TestCaseExprTemplate {
-            command: vec![Expr::Literal(Value::from("cat".to_string()))],
-            stdin: Expr::Json(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+            processes: ProcessesExprTemplate::Single(
+                ProcessExprTemplate {
+                    command: vec![Expr::Literal(Value::from("cat".to_string()))],
+                    stdin: Expr::Json(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with command contains env", "
@@ -295,7 +331,12 @@ tests:
         MESSAGE1: hello
         MESSAGE2:
           $env: FOO", vec![TestCaseExprTemplate {
-            env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", env_var_expr("FOO"))],
+            processes: ProcessesExprTemplate::Single(
+                ProcessExprTemplate {
+                    env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", env_var_expr("FOO"))],
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case(
@@ -309,13 +350,18 @@ tests:
             contents:
                 $yaml:
                     answer: 42", vec![TestCaseExprTemplate {
-                command: vec![
-                    Expr::Literal(Value::from("cat".to_string())),
-                    Expr::TmpFile(
-                        "input.yaml".to_string(),
-                        Box::new(Expr::Yaml(Value::from(mapping(vec![("answer", Value::from(42))])))),
-                    ),
-                ],
+                processes: ProcessesExprTemplate::Single(
+                    ProcessExprTemplate {
+                        command: vec![
+                            Expr::Literal(Value::from("cat".to_string())),
+                            Expr::TmpFile(
+                                "input.yaml".to_string(),
+                                Box::new(Expr::Yaml(Value::from(mapping(vec![("answer", Value::from(42))])))),
+                            ),
+                        ],
+                        ..Default::default()
+                    }
+                ),
                 ..Default::default()
         }])]
         #[case("with status matcher", "
