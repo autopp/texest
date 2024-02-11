@@ -31,17 +31,22 @@ impl PartialEq for dyn TeardownHook {
     }
 }
 
-#[derive(Debug)]
-pub struct TestCase {
-    pub name: String,
-    pub filename: String,
-    pub path: String,
+#[derive(Debug, PartialEq)]
+pub struct Process {
     pub command: Vec<String>,
     pub stdin: String,
     pub env: Vec<(String, String)>,
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
+}
+
+#[derive(Debug)]
+pub struct TestCase {
+    pub name: String,
+    pub filename: String,
+    pub path: String,
+    pub processes: IndexMap<String, Process>,
     pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
     pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
@@ -102,11 +107,7 @@ impl PartialEq for TestCase {
         if self.name != other.name
             || self.filename != other.filename
             || self.path != other.path
-            || self.command != other.command
-            || self.stdin != other.stdin
-            || self.timeout != other.timeout
-            || self.tee_stdout != other.tee_stdout
-            || self.tee_stderr != other.tee_stderr
+            || self.processes != other.processes
             || self.status_matchers != other.status_matchers
             || self.stdout_matchers != other.stdout_matchers
             || self.stderr_matchers != other.stderr_matchers
@@ -142,18 +143,21 @@ impl TestCase {
             };
         }
 
+        // FIXME: execute all processes
+        let process = self.processes.iter().next().unwrap().1;
+
         let exec_result = rt
             .block_on(execute_command(
-                self.command.clone(),
-                self.stdin.clone(),
-                self.env.clone(),
-                self.timeout,
+                process.command.clone(),
+                process.stdin.clone(),
+                process.env.clone(),
+                process.timeout,
             ))
             .map(|output| {
-                if self.tee_stdout {
+                if process.tee_stdout {
                     println!("{}", output.stdout.to_string_lossy());
                 }
-                if self.tee_stderr {
+                if process.tee_stderr {
                     println!("{}", output.stderr.to_string_lossy());
                 }
                 output
@@ -188,7 +192,7 @@ impl TestCase {
                 })
                 .collect::<Vec<_>>(),
             Status::Signal(signal) => vec![format!("signaled with {}", signal)],
-            Status::Timeout => vec![format!("timed out ({} sec)", self.timeout.as_secs())],
+            Status::Timeout => vec![format!("timed out ({} sec)", process.timeout.as_secs())],
         };
 
         let stdout = output.stdout.as_bytes().to_vec();
@@ -252,12 +256,13 @@ impl TestCase {
 
 #[cfg(test)]
 pub mod testutil {
+    use indexmap::{indexmap, IndexMap};
     use serde_yaml::Value;
 
     use crate::matcher::Matcher;
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
-    use super::{LifeCycleHook, SetupHook, TeardownHook, TestCase};
+    use super::{LifeCycleHook, Process, SetupHook, TeardownHook, TestCase};
 
     pub const DEFAULT_NAME: &str = "test";
     pub const DEFAULT_FILENAME: &str = "test.yaml";
@@ -315,16 +320,50 @@ pub mod testutil {
         }
     }
 
-    pub struct TestCaseTemplate {
-        pub name: &'static str,
-        pub filename: &'static str,
-        pub path: &'static str,
+    pub struct ProcessTemplate {
         pub command: Vec<&'static str>,
         pub stdin: &'static str,
         pub env: Vec<(&'static str, &'static str)>,
         pub timeout: u64,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
+    }
+
+    impl Default for ProcessTemplate {
+        fn default() -> Self {
+            ProcessTemplate {
+                command: vec!["echo", "hello"],
+                stdin: "",
+                env: vec![],
+                timeout: DEFAULT_TIMEOUT,
+                tee_stdout: false,
+                tee_stderr: false,
+            }
+        }
+    }
+
+    impl ProcessTemplate {
+        pub fn build(self) -> Process {
+            Process {
+                command: self.command.iter().map(|x| x.to_string()).collect(),
+                stdin: self.stdin.to_string(),
+                env: self
+                    .env
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                timeout: Duration::from_secs(self.timeout),
+                tee_stdout: self.tee_stdout,
+                tee_stderr: self.tee_stderr,
+            }
+        }
+    }
+
+    pub struct TestCaseTemplate {
+        pub name: &'static str,
+        pub filename: &'static str,
+        pub path: &'static str,
+        pub processes: IndexMap<&'static str, ProcessTemplate>,
         pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
         pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
         pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
@@ -338,16 +377,11 @@ pub mod testutil {
                 name: self.name.to_string(),
                 filename: self.filename.to_string(),
                 path: self.path.to_string(),
-                command: self.command.iter().map(|x| x.to_string()).collect(),
-                stdin: self.stdin.to_string(),
-                env: self
-                    .env
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                processes: self
+                    .processes
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.build()))
                     .collect(),
-                timeout: Duration::from_secs(self.timeout),
-                tee_stdout: self.tee_stdout,
-                tee_stderr: self.tee_stderr,
                 status_matchers: self.status_matchers,
                 stdout_matchers: self.stdout_matchers,
                 stderr_matchers: self.stderr_matchers,
@@ -363,12 +397,7 @@ pub mod testutil {
                 name: DEFAULT_NAME,
                 filename: DEFAULT_FILENAME,
                 path: DEFAULT_PATH,
-                command: vec!["echo", "hello"],
-                stdin: "",
-                env: vec![],
-                timeout: DEFAULT_TIMEOUT,
-                tee_stdout: false,
-                tee_stderr: false,
+                processes: indexmap! {},
                 status_matchers: vec![],
                 stdout_matchers: vec![],
                 stderr_matchers: vec![],
@@ -400,7 +429,7 @@ mod tests {
             use crate::matcher::testutil::TestMatcher;
             use crate::test_case::testutil::HookType::{Setup, Teardown};
             use crate::test_case::testutil::{
-                HookHistory, TestCaseTemplate, TestHook, DEFAULT_NAME,
+                HookHistory, ProcessTemplate, TestCaseTemplate, TestHook, DEFAULT_NAME,
             };
 
             use super::*;
@@ -423,37 +452,37 @@ mod tests {
 
             #[rstest]
             #[case("command is exit, no matchers",
-                TestCaseTemplate { command: vec!["true"], ..Default::default() },
+                TestCaseTemplate {  processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are succeeded",
-                TestCaseTemplate{ command: vec!["true"], status_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestCaseTemplate{ processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } },  status_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are failed",
-                TestCaseTemplate { command: vec!["true"], status_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, status_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec![TestMatcher::failure_message(0)]} })]
             #[case("command is exit, stdout matchers are succeeded",
-                TestCaseTemplate { command: vec!["true"], stdout_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stdout matchers are failed",
-                TestCaseTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
-                TestCaseTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello world".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, env is given",
-                TestCaseTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDOUT_STRING.clone() => vec![TestMatcher::failure_message("hello\n".as_bytes())]} })]
             #[case("command is exit, stderr matchers are succeeded",
-                TestCaseTemplate { command: vec!["true"], stderr_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, stderr_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stderr matchers are failed",
-                TestCaseTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], ..Default::default() } }, stderr_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STDERR_STRING.clone() => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
             #[case("command is signaled",
-                TestCaseTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["signaled with 15".to_string()]} })]
             #[case("command is timed out",
-                TestCaseTemplate { command: vec!["sleep", "1"], timeout: 0, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["sleep", "1"], timeout: 0, ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{STATUS_STRING.clone() => vec!["timed out (0 sec)".to_string()]} })]
             fn when_exec_succeeded(
                 #[case] title: &str,
@@ -505,7 +534,7 @@ mod tests {
                 let history = Rc::new(RefCell::new(vec![]));
 
                 let given = TestCaseTemplate {
-                    command: vec!["bash", "-c", "exit 42"],
+                    processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "exit 42"], ..Default::default() } },
                     status_matchers: vec![status_matcher],
                     setup_hooks: setup_hooks
                         .iter()
@@ -548,7 +577,7 @@ mod tests {
             #[test]
             fn when_exec_failed() {
                 let given = TestCaseTemplate {
-                    command: vec!["_unknown"],
+                    processes: indexmap! { "main" => ProcessTemplate { command: vec!["_unknown"], ..Default::default() } },
                     ..Default::default()
                 }
                 .build();
