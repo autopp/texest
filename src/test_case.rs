@@ -3,7 +3,7 @@ use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration}
 use indexmap::{indexmap, IndexMap};
 
 use crate::{
-    exec::{execute_command, Status},
+    exec::{execute_command, Output, Status},
     matcher::Matcher,
 };
 
@@ -143,34 +143,42 @@ impl TestCase {
             };
         }
 
-        // FIXME: execute all processes
-        let process = self.processes.iter().next().unwrap().1;
+        let exec_results: IndexMap<String, Result<Output, String>> = self
+            .processes
+            .iter()
+            .map(|(name, process)| {
+                let exec_result = rt.block_on(execute_command(
+                    process.command.clone(),
+                    process.stdin.clone(),
+                    process.env.clone(),
+                    process.timeout,
+                ));
 
-        let exec_result = rt
-            .block_on(execute_command(
-                process.command.clone(),
-                process.stdin.clone(),
-                process.env.clone(),
-                process.timeout,
-            ))
-            .map(|output| {
-                if process.tee_stdout {
-                    println!("{}", output.stdout.to_string_lossy());
-                }
-                if process.tee_stderr {
-                    println!("{}", output.stderr.to_string_lossy());
-                }
-                output
-            });
+                let output = exec_result.map(|output| {
+                    if process.tee_stdout {
+                        println!("{}", output.stdout.to_string_lossy());
+                    }
+                    if process.tee_stderr {
+                        println!("{}", output.stderr.to_string_lossy());
+                    }
+                    output
+                });
 
-        if let Err(err) = exec_result {
+                (name.clone(), output)
+            })
+            .collect();
+
+        // FIXME: collect all processe's result
+        let last_process = self.processes.values().last().unwrap();
+        let last_result = exec_results.values().last().unwrap();
+        if let Err(err) = last_result {
             return TestResult {
                 name: self.name.clone(),
-                failures: indexmap! { "exec".to_string() => vec![err] },
+                failures: indexmap! { "exec".to_string() => vec![err.clone()] },
             };
         }
 
-        let output = exec_result.unwrap();
+        let output = last_result.as_ref().unwrap();
 
         let status = match output.status {
             Status::Exit(code) => self
@@ -192,7 +200,10 @@ impl TestCase {
                 })
                 .collect::<Vec<_>>(),
             Status::Signal(signal) => vec![format!("signaled with {}", signal)],
-            Status::Timeout => vec![format!("timed out ({} sec)", process.timeout.as_secs())],
+            Status::Timeout => vec![format!(
+                "timed out ({} sec)",
+                last_process.timeout.as_secs()
+            )],
         };
 
         let stdout = output.stdout.as_bytes().to_vec();
