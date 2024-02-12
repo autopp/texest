@@ -159,24 +159,7 @@ impl TestCase {
             |((process_name, process), exec_result)| match exec_result {
                 Ok(output) => {
                     let status_messages = match output.status {
-                        Status::Exit(code) => process
-                            .status_matchers
-                            .iter()
-                            .filter_map(|matcher| {
-                                matcher
-                                    .matches(&code)
-                                    .map(
-                                        |(passed, message)| {
-                                            if passed {
-                                                None
-                                            } else {
-                                                Some(message)
-                                            }
-                                        },
-                                    )
-                                    .unwrap_or_else(Some)
-                            })
-                            .collect::<Vec<_>>(),
+                        Status::Exit(code) => run_matchers(&process.status_matchers, &code),
                         Status::Signal(signal) => vec![format!("signaled with {}", signal)],
                         Status::Timeout => {
                             vec![format!("timed out ({} sec)", process.timeout.as_secs())]
@@ -184,44 +167,10 @@ impl TestCase {
                     };
 
                     let stdout = output.stdout.as_bytes().to_vec();
-                    let stdout_messages = process
-                        .stdout_matchers
-                        .iter()
-                        .filter_map(|matcher| {
-                            matcher
-                                .matches(&stdout)
-                                .map(
-                                    |(passed, message)| {
-                                        if passed {
-                                            None
-                                        } else {
-                                            Some(message)
-                                        }
-                                    },
-                                )
-                                .unwrap_or_else(Some)
-                        })
-                        .collect::<Vec<_>>();
+                    let stdout_messages = run_matchers(&process.stdout_matchers, &stdout);
 
                     let stderr = output.stderr.as_bytes().to_vec();
-                    let stderr_messages = process
-                        .stderr_matchers
-                        .iter()
-                        .filter_map(|matcher| {
-                            matcher
-                                .matches(&stderr)
-                                .map(
-                                    |(passed, message)| {
-                                        if passed {
-                                            None
-                                        } else {
-                                            Some(message)
-                                        }
-                                    },
-                                )
-                                .unwrap_or_else(Some)
-                        })
-                        .collect::<Vec<_>>();
+                    let stderr_messages = run_matchers(&process.stderr_matchers, &stderr);
 
                     if !status_messages.is_empty() {
                         failures.insert(subject_of(process_name, "status"), status_messages);
@@ -259,6 +208,18 @@ impl TestCase {
 
 fn subject_of<S: AsRef<str>, T: AsRef<str>>(process_name: S, subject: T) -> String {
     format!("{}:{}", process_name.as_ref(), subject.as_ref())
+}
+
+fn run_matchers<T>(matchers: &[Box<dyn Matcher<T>>], value: &T) -> Vec<String> {
+    matchers
+        .iter()
+        .filter_map(|matcher| {
+            matcher
+                .matches(value)
+                .map(|(passed, message)| if passed { None } else { Some(message) })
+                .unwrap_or_else(Some)
+        })
+        .collect()
 }
 
 #[cfg(test)]
