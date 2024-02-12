@@ -41,7 +41,7 @@ pub struct Process {
     pub tee_stderr: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TestCase {
     pub name: String,
     pub filename: String,
@@ -99,25 +99,6 @@ impl TestResultSummary {
 
     pub fn is_all_passed(&self) -> bool {
         self.results.iter().all(|result| result.is_passed())
-    }
-}
-
-impl PartialEq for TestCase {
-    fn eq(&self, other: &Self) -> bool {
-        if self.name != other.name
-            || self.filename != other.filename
-            || self.path != other.path
-            || self.processes != other.processes
-            || self.status_matchers != other.status_matchers
-            || self.stdout_matchers != other.stdout_matchers
-            || self.stderr_matchers != other.stderr_matchers
-            || self.setup_hooks != other.setup_hooks
-            || self.teardown_hooks != other.teardown_hooks
-        {
-            return false;
-        }
-
-        true
     }
 }
 
