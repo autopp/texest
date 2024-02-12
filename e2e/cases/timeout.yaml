@@ -26,6 +26,6 @@ tests:
               - name: 'sleep 2'
                 passed: false
                 failures:
-                  - subject: status
+                  - subject: main:status
                     messages:
                       - 'timed out (0 sec)'

@@ -44,7 +44,7 @@ tests:
               - name: 'echo hello'
                 passed: false
                 failures:
-                  - subject: stdout
+                  - subject: main:stdout
                     messages:
                       - |
                         not equals:
