@@ -39,6 +39,9 @@ pub struct Process {
     pub timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
+    pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
+    pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+    pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -47,9 +50,6 @@ pub struct TestCase {
     pub filename: String,
     pub path: String,
     pub processes: IndexMap<String, Process>,
-    pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
-    pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
-    pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
 }
@@ -163,7 +163,7 @@ impl TestCase {
         let output = last_result.as_ref().unwrap();
 
         let status = match output.status {
-            Status::Exit(code) => self
+            Status::Exit(code) => last_process
                 .status_matchers
                 .iter()
                 .filter_map(|matcher| {
@@ -189,7 +189,7 @@ impl TestCase {
         };
 
         let stdout = output.stdout.as_bytes().to_vec();
-        let stdout_messages = self
+        let stdout_messages = last_process
             .stdout_matchers
             .iter()
             .filter_map(|matcher| {
@@ -209,7 +209,7 @@ impl TestCase {
             .collect::<Vec<_>>();
 
         let stderr = output.stderr.as_bytes().to_vec();
-        let stderr_messages = self
+        let stderr_messages = last_process
             .stderr_matchers
             .iter()
             .filter_map(|matcher| {
@@ -334,6 +334,9 @@ pub mod testutil {
         pub timeout: u64,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
+        pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
+        pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+        pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
     }
 
     impl Default for ProcessTemplate {
@@ -345,6 +348,9 @@ pub mod testutil {
                 timeout: DEFAULT_TIMEOUT,
                 tee_stdout: false,
                 tee_stderr: false,
+                status_matchers: vec![],
+                stdout_matchers: vec![],
+                stderr_matchers: vec![],
             }
         }
     }
@@ -362,6 +368,9 @@ pub mod testutil {
                 timeout: Duration::from_secs(self.timeout),
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
+                status_matchers: self.status_matchers,
+                stdout_matchers: self.stdout_matchers,
+                stderr_matchers: self.stderr_matchers,
             }
         }
     }
@@ -371,9 +380,6 @@ pub mod testutil {
         pub filename: &'static str,
         pub path: &'static str,
         pub processes: IndexMap<&'static str, ProcessTemplate>,
-        pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
-        pub stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
-        pub stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
         pub setup_hooks: Vec<Box<dyn SetupHook>>,
         pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
     }
@@ -389,9 +395,6 @@ pub mod testutil {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.build()))
                     .collect(),
-                status_matchers: self.status_matchers,
-                stdout_matchers: self.stdout_matchers,
-                stderr_matchers: self.stderr_matchers,
                 setup_hooks: self.setup_hooks,
                 teardown_hooks: self.teardown_hooks,
             }
@@ -405,9 +408,6 @@ pub mod testutil {
                 filename: DEFAULT_FILENAME,
                 path: DEFAULT_PATH,
                 processes: indexmap! {},
-                status_matchers: vec![],
-                stdout_matchers: vec![],
-                stderr_matchers: vec![],
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
             }
@@ -449,28 +449,28 @@ mod tests {
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are succeeded",
-                TestCaseTemplate{ processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } },  status_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestCaseTemplate{ processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, status_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(0)]} })]
             #[case("command is exit, stdout matchers are succeeded",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stdout_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stdout matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello world".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, env is given",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], ..Default::default() } }, stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello\n".as_bytes())]} })]
             #[case("command is exit, stderr matchers are succeeded",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, stderr_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stderr_matchers: vec![TestMatcher::new_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stderr matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], ..Default::default() } }, stderr_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![TestMatcher::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDERR_STRING) => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
             #[case("command is signaled",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() } }, ..Default::default() },
@@ -524,8 +524,13 @@ mod tests {
                 let history = Rc::new(RefCell::new(vec![]));
 
                 let given = TestCaseTemplate {
-                    processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "exit 42"], ..Default::default() } },
-                    status_matchers: vec![status_matcher],
+                    processes: indexmap! {
+                        "main" => ProcessTemplate {
+                            command: vec!["bash", "-c", "exit 42"],
+                            status_matchers: vec![status_matcher],
+                            ..Default::default()
+                        }
+                    },
                     setup_hooks: setup_hooks
                         .iter()
                         .map(|(name, err)| -> Box<dyn SetupHook> {

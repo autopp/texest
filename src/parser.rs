@@ -9,7 +9,10 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
-    test_case_expr::{ProcessExpr, ProcessesExpr, TestCaseExpr, TestCaseExprFile},
+    test_case_expr::{
+        ProcessExpr, ProcessMatchersExpr, ProcessesExpr, ProcessesMatchersExpr, TestCaseExpr,
+        TestCaseExprFile,
+    },
     validator::{Validator, Violation},
 };
 
@@ -59,7 +62,7 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                 v.map_seq(tests, |v, test| {
                     v.must_be_map(test).map(|test| {
                         let name = v.may_have(&test, "name", parse_expr);
-                        let (status_matchers, stdout_matchers, stderr_matchers) = v
+                        let (status_matcher_exprs, stdout_matcher_exprs, stderr_matcher_exprs) = v
                             .may_have_map(&test, "expect", |v, expect| {
                                 let status_matchers = v
                                     .may_have_map(expect, "status", parse_expected)
@@ -106,9 +109,11 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             processes,
-                            status_matchers,
-                            stdout_matchers,
-                            stderr_matchers,
+                            matchers: ProcessesMatchersExpr::Single(ProcessMatchersExpr {
+                                status_matcher_exprs,
+                                stdout_matcher_exprs,
+                                stderr_matcher_exprs,
+                            }),
                         }
                     })
                 })
@@ -229,7 +234,8 @@ mod tests {
                 Expr,
             },
             test_case_expr::testutil::{
-                ProcessExprTemplate, ProcessesExprTemplate, TestCaseExprTemplate,
+                ProcessExprTemplate, ProcessMatchersExprTemplate, ProcessesExprTemplate,
+                ProcessesMatchersExprTemplate, TestCaseExprTemplate,
             },
         };
 
@@ -440,7 +446,12 @@ tests:
       expect:
         status:
           success: true", vec![TestCaseExprTemplate {
-            status_matchers: indexmap!{ "success" => literal_expr(true) },
+            matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with stdout matcher", "
@@ -451,7 +462,12 @@ tests:
       expect:
         stdout:
           be_empty: true", vec![TestCaseExprTemplate {
-            stdout_matchers: indexmap!{ "be_empty" => literal_expr(true) },
+            matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with stderr matcher", "
@@ -462,7 +478,12 @@ tests:
       expect:
         stderr:
           be_empty: true", vec![TestCaseExprTemplate {
-            stderr_matchers: indexmap!{ "be_empty" => literal_expr(true) },
+            matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    stderr_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         fn success_case(
