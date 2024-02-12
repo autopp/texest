@@ -1,9 +1,10 @@
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
+use futures::future::join_all;
 use indexmap::{indexmap, IndexMap};
 
 use crate::{
-    exec::{execute_command, Output, Status},
+    exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
     matcher::Matcher,
 };
 
@@ -131,28 +132,62 @@ impl TestCase {
             };
         }
 
-        let exec_results: Vec<Result<Output, String>> = self
-            .processes
-            .iter()
-            .map(|(_, process)| {
-                let exec_result = rt.block_on(execute_command(
-                    process.command.clone(),
-                    process.stdin.clone(),
-                    process.env.clone(),
-                    process.timeout,
-                ));
+        enum Execution {
+            Foreground(Result<Output, String>),
+            Background(Result<BackgroundExec, String>),
+        }
 
-                exec_result.map(|output| {
-                    if process.tee_stdout {
-                        println!("{}", output.stdout.to_string_lossy());
+        let exec_results = rt.block_on(async {
+            let mut executions: Vec<Execution> = vec![];
+
+            for (_, process) in self.processes.iter() {
+                let execution = match process.mode {
+                    ProcessMode::Foreground => {
+                        let exec_result = execute_command(
+                            process.command.clone(),
+                            process.stdin.clone(),
+                            process.env.clone(),
+                            process.timeout,
+                        )
+                        .await;
+
+                        if let Ok(output) = &exec_result {
+                            if process.tee_stdout {
+                                println!("{}", output.stdout.to_string_lossy());
+                            }
+                            if process.tee_stderr {
+                                println!("{}", output.stderr.to_string_lossy());
+                            }
+                        }
+
+                        Execution::Foreground(exec_result)
                     }
-                    if process.tee_stderr {
-                        println!("{}", output.stderr.to_string_lossy());
+                    ProcessMode::Background => {
+                        let background_exec = execute_background_command(
+                            process.command.clone(),
+                            process.stdin.clone(),
+                            process.env.clone(),
+                            process.timeout,
+                        )
+                        .await;
+
+                        Execution::Background(background_exec)
                     }
-                    output
-                })
-            })
-            .collect();
+                };
+
+                executions.push(execution);
+            }
+
+            async fn collect_exec_result(execution: Execution) -> Result<Output, String> {
+                match execution {
+                    Execution::Foreground(result) => result,
+                    Execution::Background(Ok(bg)) => bg.terminate().await,
+                    Execution::Background(Err(err)) => Err(err),
+                }
+            }
+
+            join_all(executions.into_iter().map(collect_exec_result)).await
+        });
 
         let mut failures = indexmap! {};
         self.processes.iter().zip(exec_results).for_each(
@@ -371,7 +406,7 @@ pub mod testutil {
                 name: DEFAULT_NAME,
                 filename: DEFAULT_FILENAME,
                 path: DEFAULT_PATH,
-                processes: indexmap! {},
+                processes: indexmap! { "main" => ProcessTemplate::default() },
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
             }
@@ -442,6 +477,40 @@ mod tests {
             #[case("command is timed out",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["sleep", "1"], timeout: 0, ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec!["timed out (0 sec)".to_string()]} })]
+            #[case("with background process",
+                TestCaseTemplate {
+                    processes: indexmap! {
+                        "bg" => ProcessTemplate {
+                            command: vec!["bash", "-c", r#"
+                                trap 'echo goodbye >&2; exit 2' TERM
+                                echo hello
+                                sleep 0.01
+                                while true; do true; done
+                            "#
+                            ],
+                            mode: ProcessMode::Background,
+                            status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            stdout_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            stderr_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            ..Default::default()
+                        },
+                        "main" => ProcessTemplate {
+                            command: vec!["false"],
+                            status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            ..Default::default()
+                        }
+                    },
+                    ..Default::default()
+                },
+                TestResult {
+                    name: DEFAULT_NAME.to_string(),
+                    failures: indexmap! {
+                        format!("bg:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(2)],
+                        format!("bg:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello\n".as_bytes())],
+                        format!("bg:{}", *STDERR_STRING) => vec![TestMatcher::failure_message("goodbye\n".as_bytes())],
+                        format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(1)]
+                    }
+                })]
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCaseTemplate,

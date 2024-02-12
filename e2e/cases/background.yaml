@@ -1,0 +1,38 @@
+tests:
+  - name: 'background process'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - processes:
+              proc1:
+                command:
+                  - bash
+                  - '-c'
+                  - |
+                    trap 'echo goodbye >&2; exit 1' TERM
+                    echo hello
+                    sleep 0.01
+                    while true; do true; done
+                background: {}
+              proc2:
+                command:
+                  - 'cat'
+                stdin: 'hello'
+            expect:
+              processes:
+                proc1:
+                  status:
+                    eq: 1
+                  stdout:
+                    eq: "hello\n"
+                  stderr:
+                    eq: "goodbye\n"
+                proc2:
+                  stdout:
+                    eq: "hello"
+    expect:
+      status:
+        eq: 0

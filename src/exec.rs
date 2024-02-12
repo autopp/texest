@@ -9,6 +9,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 use tokio::process::Command;
+use tokio::time::sleep;
 
 #[derive(PartialEq, Debug)]
 pub enum Status {
@@ -32,7 +33,7 @@ pub struct BackgroundExec {
 
 impl BackgroundExec {
     pub async fn terminate(self) -> Result<Output, String> {
-        let BackgroundExec { mut child, timeout } = self;
+        let BackgroundExec { child, timeout } = self;
         let pid = child
             .id()
             .map(|id| nix::unistd::Pid::from_raw(id as i32))
@@ -87,6 +88,10 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
     let _ = tokio::task::spawn(async move { cmd_stdin.write_all(stdin.as_bytes()).await })
         .await
         .map_err(|err| err.to_string())?;
+
+    // FIXME: temporary workaround
+    // wait for user given condition
+    sleep(Duration::from_millis(100)).await;
 
     Ok(BackgroundExec {
         child: cmd,

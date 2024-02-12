@@ -193,6 +193,9 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         })
         .unwrap_or_default();
     let timeout = v.may_have_uint(m, "timeout").unwrap_or(DEFAULT_TIMEOUT);
+    let mode = v
+        .may_have_map(m, "background", |_, _| ProcessMode::Background)
+        .unwrap_or(ProcessMode::Foreground);
     let tee_stdout = v.may_have_bool(m, "teeStdout").unwrap_or(false);
     let tee_stderr = v.may_have_bool(m, "teeStderr").unwrap_or(false);
 
@@ -201,7 +204,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         stdin,
         env,
         timeout: Duration::from_secs(timeout),
-        mode: ProcessMode::Foreground,
+        mode,
         tee_stdout,
         tee_stderr,
     }
@@ -474,6 +477,38 @@ tests:
             }),
             ..Default::default()
         }])]
+        #[case("with multiple background processes", "
+tests:
+    - processes:
+        process1:
+            command:
+                - echo
+                - hello
+            background: {}
+        process2:
+            command:
+                - echo
+                - world
+    ", vec![TestCaseExprTemplate {
+            processes: ProcessesExprTemplate::Multi(indexmap! {
+                "process1" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("hello"),
+                    ],
+                    mode: ProcessMode::Background,
+                    ..Default::default()
+                },
+                "process2" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("world"),
+                    ],
+                    ..Default::default()
+                },
+            }),
+            ..Default::default()
+        }])]
         #[case("with multiple processes and expectations", "
 tests:
     - processes:
@@ -600,6 +635,7 @@ tests:
         #[case("when multi processes is empty", "tests: [processes: {}]", vec![("$.tests[0].processes", "should not be empty")])]
         #[case("when some process is not map", "tests: [processes: {proc1: true}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
         #[case("when some process's command is empty", "tests: [processes: {proc1: {command: []}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
+        #[case("when backgroud is not map", "tests: [processes: {proc1: {command: [true], background: true}}]", vec![("$.tests[0].processes.proc1.background", "should be map, but is bool")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
         #[case("when test multi expect is not map", "tests: [{command: [echo], expect: {processes: 42}}]", vec![("$.tests[0].expect.processes", "should be map, but is uint")])]
         #[case("when multiple process givenm but expect is single", "tests: [{processes: {process1: {command: [echo]}}, expect: {stdin: {eq: 0}}}]", vec![("$.tests[0].expect", "expect should be multiple mode when multiple processes are given")])]
