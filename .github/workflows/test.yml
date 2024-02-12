@@ -37,7 +37,7 @@ jobs:
         if: ${{ steps.unittest.conclusion == 'success' || steps.unittest.conclusion == 'failure' }}
       - run: |
           cargo fmt --check
-          cargo clippy
+          cargo clippy -- -D warnings
       - run: cargo build --release
       - run: |
           gh release download --repo autopp/texest --pattern texest-x86_64-unknown-linux-musl -D /tmp
