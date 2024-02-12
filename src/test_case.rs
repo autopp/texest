@@ -574,7 +574,7 @@ mod tests {
 
                 let actual = given.run();
 
-                assert_eq!(DEFAULT_NAME.clone(), actual.name);
+                assert_eq!(DEFAULT_NAME, actual.name);
                 assert_eq!(1, actual.failures.len());
                 assert_eq!(1, actual.failures.get("main:exec").unwrap().len());
             }

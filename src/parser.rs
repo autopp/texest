@@ -63,13 +63,13 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             .may_have_map(&test, "expect", |v, expect| {
                                 let status_matchers = v
                                     .may_have_map(expect, "status", parse_expected)
-                                    .unwrap_or(IndexMap::new());
+                                    .unwrap_or_default();
                                 let stdout_matchers = v
                                     .may_have_map(expect, "stdout", parse_expected)
-                                    .unwrap_or(IndexMap::new());
+                                    .unwrap_or_default();
                                 let stderr_matchers = v
                                     .may_have_map(expect, "stderr", parse_expected)
-                                    .unwrap_or(IndexMap::new());
+                                    .unwrap_or_default();
                                 (status_matchers, stdout_matchers, stderr_matchers)
                             })
                             .unwrap_or((IndexMap::new(), IndexMap::new(), IndexMap::new()));
@@ -168,7 +168,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
                 })
                 .collect::<Vec<_>>()
         })
-        .unwrap_or(vec![]);
+        .unwrap_or_default();
     let timeout = v.may_have_uint(m, "timeout").unwrap_or(DEFAULT_TIMEOUT);
     let tee_stdout = v.may_have_bool(m, "teeStdout").unwrap_or(false);
     let tee_stderr = v.may_have_bool(m, "teeStderr").unwrap_or(false);

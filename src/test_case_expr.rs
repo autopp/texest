@@ -329,9 +329,9 @@ pub mod testutil {
     }
 
     impl TestCaseExprTemplate {
-        pub const NAME_FOR_DEFAULT_COMMAND: &str = "echo hello";
-        pub const DEFAULT_FILENAME: &str = "test.yaml";
-        pub const DEFAULT_PATH: &str = "$.tests[0]";
+        pub const NAME_FOR_DEFAULT_COMMAND: &'static str = "echo hello";
+        pub const DEFAULT_FILENAME: &'static str = "test.yaml";
+        pub const DEFAULT_PATH: &'static str = "$.tests[0]";
 
         pub fn default_command() -> Vec<Expr> {
             vec![literal_expr("echo"), literal_expr("hello")]
