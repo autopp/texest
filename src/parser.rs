@@ -9,7 +9,10 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
-    test_case_expr::{ProcessExpr, ProcessesExpr, TestCaseExpr, TestCaseExprFile},
+    test_case_expr::{
+        ProcessExpr, ProcessMatchersExpr, ProcessesExpr, ProcessesMatchersExpr, TestCaseExpr,
+        TestCaseExprFile,
+    },
     validator::{Validator, Violation},
 };
 
@@ -59,20 +62,6 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                 v.map_seq(tests, |v, test| {
                     v.must_be_map(test).map(|test| {
                         let name = v.may_have(&test, "name", parse_expr);
-                        let (status_matchers, stdout_matchers, stderr_matchers) = v
-                            .may_have_map(&test, "expect", |v, expect| {
-                                let status_matchers = v
-                                    .may_have_map(expect, "status", parse_expected)
-                                    .unwrap_or_default();
-                                let stdout_matchers = v
-                                    .may_have_map(expect, "stdout", parse_expected)
-                                    .unwrap_or_default();
-                                let stderr_matchers = v
-                                    .may_have_map(expect, "stderr", parse_expected)
-                                    .unwrap_or_default();
-                                (status_matchers, stdout_matchers, stderr_matchers)
-                            })
-                            .unwrap_or((IndexMap::new(), IndexMap::new(), IndexMap::new()));
 
                         let processes: ProcessesExpr = v
                             .may_have(&test, "processes", |v, processes| {
@@ -101,14 +90,47 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             })
                             .unwrap_or_else(|| ProcessesExpr::Single(parse_process(v, &test)));
 
+                        let matcher_exprs: ProcessesMatchersExpr = v
+                            .may_have_map(&test, "expect", |v, expect| {
+                                v.may_have_map(expect, "processes", |v, processes| {
+                                    ProcessesMatchersExpr::Multi(
+                                        processes
+                                            .iter()
+                                            .filter_map(|(name, process)| {
+                                                v.in_field(name, |v| {
+                                                    v.must_be_map(process).map(|process| {
+                                                        (
+                                                            name.to_string(),
+                                                            parse_expectations(v, &process),
+                                                        )
+                                                    })
+                                                })
+                                            })
+                                            .collect(),
+                                    )
+                                })
+                                .unwrap_or_else(|| {
+                                    ProcessesMatchersExpr::Single(parse_expectations(v, expect))
+                                })
+                            })
+                            .unwrap_or(ProcessesMatchersExpr::Multi(indexmap! {}));
+
+                        if let (ProcessesExpr::Multi(_), ProcessesMatchersExpr::Single(_)) =
+                            (&processes, &matcher_exprs)
+                        {
+                            v.in_field("expect", |v| {
+                                v.add_violation(
+                                    "expect should be multiple mode when multiple processes are given",
+                                );
+                            })
+                        }
+
                         TestCaseExpr {
                             name,
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             processes,
-                            status_matchers,
-                            stdout_matchers,
-                            stderr_matchers,
+                            matchers: matcher_exprs,
                         }
                     })
                 })
@@ -209,6 +231,23 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
         .unwrap_or_else(|| Expr::Literal(x.clone()))
 }
 
+fn parse_expectations(v: &mut Validator, m: &Map) -> ProcessMatchersExpr {
+    let status_matcher_exprs = v
+        .may_have_map(m, "status", parse_expected)
+        .unwrap_or_default();
+    let stdout_matcher_exprs = v
+        .may_have_map(m, "stdout", parse_expected)
+        .unwrap_or_default();
+    let stderr_matcher_exprs = v
+        .may_have_map(m, "stderr", parse_expected)
+        .unwrap_or_default();
+    ProcessMatchersExpr {
+        status_matcher_exprs,
+        stdout_matcher_exprs,
+        stderr_matcher_exprs,
+    }
+}
+
 fn parse_expected(v: &mut Validator, m: &Map) -> IndexMap<String, Expr> {
     let mut result = IndexMap::<String, Expr>::new();
     m.iter().for_each(|(name, value)| {
@@ -229,7 +268,8 @@ mod tests {
                 Expr,
             },
             test_case_expr::testutil::{
-                ProcessExprTemplate, ProcessesExprTemplate, TestCaseExprTemplate,
+                ProcessExprTemplate, ProcessMatchersExprTemplate, ProcessesExprTemplate,
+                ProcessesMatchersExprTemplate, TestCaseExprTemplate,
             },
         };
 
@@ -432,6 +472,54 @@ tests:
             }),
             ..Default::default()
         }])]
+        #[case("with multiple processes and expectations", "
+tests:
+    - processes:
+        process1:
+            command:
+                - echo
+                - hello
+        process2:
+            command:
+                - echo
+                - world
+      expect:
+        processes:
+            process1:
+                status:
+                    success: true
+            process2:
+                stdout:
+                    be_empty: true
+    ", vec![TestCaseExprTemplate {
+            processes: ProcessesExprTemplate::Multi(indexmap! {
+                "process1" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("hello"),
+                    ],
+                    ..Default::default()
+                },
+                "process2" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("world"),
+                    ],
+                    ..Default::default()
+                },
+            }),
+            matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {
+                "process1" => ProcessMatchersExprTemplate {
+                    status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
+                    ..Default::default()
+                },
+                "process2" => ProcessMatchersExprTemplate {
+                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    ..Default::default()
+                },
+            }),
+            ..Default::default()
+        }])]
         #[case("with status matcher", "
 tests:
     - command:
@@ -440,7 +528,12 @@ tests:
       expect:
         status:
           success: true", vec![TestCaseExprTemplate {
-            status_matchers: indexmap!{ "success" => literal_expr(true) },
+            matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with stdout matcher", "
@@ -451,7 +544,12 @@ tests:
       expect:
         stdout:
           be_empty: true", vec![TestCaseExprTemplate {
-            stdout_matchers: indexmap!{ "be_empty" => literal_expr(true) },
+            matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         #[case("with stderr matcher", "
@@ -462,7 +560,12 @@ tests:
       expect:
         stderr:
           be_empty: true", vec![TestCaseExprTemplate {
-            stderr_matchers: indexmap!{ "be_empty" => literal_expr(true) },
+            matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    stderr_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    ..Default::default()
+                }
+            ),
             ..Default::default()
         }])]
         fn success_case(
@@ -496,6 +599,8 @@ tests:
         #[case("when some process is not map", "tests: [processes: {proc1: true}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
         #[case("when some process's command is empty", "tests: [processes: {proc1: {command: []}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
+        #[case("when test multi expect is not map", "tests: [{command: [echo], expect: {processes: 42}}]", vec![("$.tests[0].expect.processes", "should be map, but is uint")])]
+        #[case("when multiple process givenm but expect is single", "tests: [{processes: {process1: {command: [echo]}}, expect: {stdin: {eq: 0}}}]", vec![("$.tests[0].expect", "expect should be multiple mode when multiple processes are given")])]
         #[case("when test env is not map", "tests: [{command: [echo], env: 42}]", vec![("$.tests[0].env", "should be map, but is uint")])]
         #[case("when test env contains not string key", "tests: [{command: [echo], env: {true: hello}}]", vec![("$.tests[0].env", "should be string keyed map, but contains Bool(true)")])]
         #[case("when test env contains empty name", "tests: [{command: [echo], env: {'': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]

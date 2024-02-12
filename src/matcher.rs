@@ -21,8 +21,8 @@ pub type MatcherParser<T> =
     fn(v: &mut Validator, x: &serde_yaml::Value) -> Option<Box<dyn Matcher<T>>>;
 
 pub use registry::{
-    new_status_matcher_registry, new_stream_matcher_registry, StatusMatcherRegistry,
-    StreamMatcherRegistry,
+    new_status_matcher_registry, new_stream_matcher_registry, MatcherRegistry,
+    StatusMatcherRegistry, StreamMatcherRegistry,
 };
 
 #[cfg(test)]
