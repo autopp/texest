@@ -42,6 +42,6 @@ tests:
               - name: 'false'
                 passed: false
                 failures:
-                  - subject: status
+                  - subject: main:status
                     messages:
                       - 'should be 0, but got 1'
