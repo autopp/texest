@@ -7,6 +7,7 @@ use std::time::Duration;
 use nix::sys::signal::kill;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::process::Child;
 use tokio::process::Command;
 
 #[derive(PartialEq, Debug)]
@@ -40,42 +41,7 @@ impl BackgroundExec {
         kill(pid, nix::sys::signal::Signal::SIGTERM)
             .map_err(|err| format!("cound not send signal to {}: {}", pid, err))?;
 
-        let timeout_fut = tokio::time::sleep(timeout);
-        tokio::select! {
-            _ = timeout_fut => {
-                child.kill().await.map_err(|err| err.to_string())?;
-                let output = child.wait_with_output().await.map_err(|err| format!("command execution failed: {}", err))?;
-                Ok(Output {
-                    status: Status::Timeout,
-                    stdout: OsString::from_vec(output.stdout),
-                    stderr: OsString::from_vec(output.stderr),
-                })
-            },
-            result = child.wait() => match result {
-                Ok(status) => {
-                    let status = if let Some(code) = status.code() {
-                        Ok(Status::Exit(code))
-                    } else if let Some(signal) = status.signal() {
-                        Ok(Status::Signal(signal))
-                    } else {
-                        Err(format!("unknown process status: {}", status))
-                    }?;
-
-                    let mut stdout: Vec<u8> = vec![];
-                    child.stdout.unwrap().read_to_end(&mut stdout).await.map_err(|err| err.to_string())?;
-
-                    let mut stderr: Vec<u8> = vec![];
-                    child.stderr.unwrap().read_to_end(&mut stderr).await.map_err(|err| err.to_string())?;
-
-                    Ok(Output {
-                        status,
-                        stdout: OsString::from_vec(stdout),
-                        stderr: OsString::from_vec(stderr),
-                    })
-                },
-                Err(err) => Err(err.to_string()),
-            }
-        }
+        wait_with_timeout(child, timeout).await
     }
 }
 
@@ -99,44 +65,7 @@ pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
         .await
         .map_err(|err| err.to_string())?;
 
-    let timeout_fut = tokio::time::sleep(timeout);
-    tokio::select! {
-        _ = timeout_fut => {
-            cmd.kill().await.map_err(|err| err.to_string())?;
-            let output = cmd.wait_with_output().await.map_err(|err| format!("command execution failed: {}", err))?;
-            Ok(Output {
-                status: Status::Timeout,
-                stdout: OsString::from_vec(output.stdout),
-                stderr: OsString::from_vec(output.stderr),
-            })
-        },
-        result = cmd.wait() => {
-            match result {
-                Ok(status) => {
-                    let status = if let Some(code) = status.code() {
-                        Ok(Status::Exit(code))
-                    } else if let Some(signal) = status.signal() {
-                        Ok(Status::Signal(signal))
-                    } else {
-                        Err(format!("unknown process status: {}", status))
-                    }?;
-
-                    let mut stdout: Vec<u8> = vec![];
-                    cmd.stdout.unwrap().read_to_end(&mut stdout).await.map_err(|err| err.to_string())?;
-
-                    let mut stderr: Vec<u8> = vec![];
-                    cmd.stderr.unwrap().read_to_end(&mut stderr).await.map_err(|err| err.to_string())?;
-
-                    Ok(Output {
-                        status,
-                        stdout: OsString::from_vec(stdout),
-                        stderr: OsString::from_vec(stderr),
-                    })
-                },
-                Err(err) => Err(err.to_string()),
-            }
-        }
-    }
+    wait_with_timeout(cmd, timeout).await
 }
 
 pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
@@ -163,6 +92,47 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
         child: cmd,
         timeout,
     })
+}
+
+async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output, String> {
+    let timeout_fut = tokio::time::sleep(timeout);
+    tokio::select! {
+        _ = timeout_fut => {
+            child.kill().await.map_err(|err| err.to_string())?;
+            let output = child.wait_with_output().await.map_err(|err| format!("command execution failed: {}", err))?;
+            Ok(Output {
+                status: Status::Timeout,
+                stdout: OsString::from_vec(output.stdout),
+                stderr: OsString::from_vec(output.stderr),
+            })
+        },
+        result = child.wait() => {
+            match result {
+                Ok(status) => {
+                    let status = if let Some(code) = status.code() {
+                        Ok(Status::Exit(code))
+                    } else if let Some(signal) = status.signal() {
+                        Ok(Status::Signal(signal))
+                    } else {
+                        Err(format!("unknown process status: {}", status))
+                    }?;
+
+                    let mut stdout: Vec<u8> = vec![];
+                    child.stdout.unwrap().read_to_end(&mut stdout).await.map_err(|err| err.to_string())?;
+
+                    let mut stderr: Vec<u8> = vec![];
+                    child.stderr.unwrap().read_to_end(&mut stderr).await.map_err(|err| err.to_string())?;
+
+                    Ok(Output {
+                        status,
+                        stdout: OsString::from_vec(stdout),
+                        stderr: OsString::from_vec(stderr),
+                    })
+                },
+                Err(err) => Err(err.to_string()),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
