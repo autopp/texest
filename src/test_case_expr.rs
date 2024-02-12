@@ -478,11 +478,7 @@ pub mod testutil {
                 filename: TestCaseExprTemplate::DEFAULT_FILENAME,
                 path: TestCaseExprTemplate::DEFAULT_PATH,
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate::default()),
-                matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
-                    status_matcher_exprs: indexmap! {},
-                    stdout_matcher_exprs: indexmap! {},
-                    stderr_matcher_exprs: indexmap! {},
-                }),
+                matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {}),
             }
         }
     }
