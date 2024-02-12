@@ -131,10 +131,10 @@ impl TestCase {
             };
         }
 
-        let exec_results: IndexMap<String, Result<Output, String>> = self
+        let exec_results: Vec<Result<Output, String>> = self
             .processes
             .iter()
-            .map(|(name, process)| {
+            .map(|(_, process)| {
                 let exec_result = rt.block_on(execute_command(
                     process.command.clone(),
                     process.stdin.clone(),
@@ -142,7 +142,7 @@ impl TestCase {
                     process.timeout,
                 ));
 
-                let output = exec_result.map(|output| {
+                exec_result.map(|output| {
                     if process.tee_stdout {
                         println!("{}", output.stdout.to_string_lossy());
                     }
@@ -150,90 +150,94 @@ impl TestCase {
                         println!("{}", output.stderr.to_string_lossy());
                     }
                     output
-                });
-
-                (name.clone(), output)
+                })
             })
             .collect();
 
-        // FIXME: collect all processe's result
-        let last_process = self.processes.values().last().unwrap();
-        let (last_process_name, last_result) = exec_results.last().unwrap();
+        let mut failures = indexmap! {};
+        self.processes.iter().zip(exec_results).for_each(
+            |((process_name, process), exec_result)| match exec_result {
+                Ok(output) => {
+                    let status_messages = match output.status {
+                        Status::Exit(code) => process
+                            .status_matchers
+                            .iter()
+                            .filter_map(|matcher| {
+                                matcher
+                                    .matches(&code)
+                                    .map(
+                                        |(passed, message)| {
+                                            if passed {
+                                                None
+                                            } else {
+                                                Some(message)
+                                            }
+                                        },
+                                    )
+                                    .unwrap_or_else(Some)
+                            })
+                            .collect::<Vec<_>>(),
+                        Status::Signal(signal) => vec![format!("signaled with {}", signal)],
+                        Status::Timeout => {
+                            vec![format!("timed out ({} sec)", process.timeout.as_secs())]
+                        }
+                    };
 
-        if let Err(err) = last_result {
-            return TestResult {
-                name: self.name.clone(),
-                failures: indexmap! { subject_of(last_process_name, "exec") => vec![err.clone()] },
-            };
-        }
+                    let stdout = output.stdout.as_bytes().to_vec();
+                    let stdout_messages = process
+                        .stdout_matchers
+                        .iter()
+                        .filter_map(|matcher| {
+                            matcher
+                                .matches(&stdout)
+                                .map(
+                                    |(passed, message)| {
+                                        if passed {
+                                            None
+                                        } else {
+                                            Some(message)
+                                        }
+                                    },
+                                )
+                                .unwrap_or_else(Some)
+                        })
+                        .collect::<Vec<_>>();
 
-        let output = last_result.as_ref().unwrap();
+                    let stderr = output.stderr.as_bytes().to_vec();
+                    let stderr_messages = process
+                        .stderr_matchers
+                        .iter()
+                        .filter_map(|matcher| {
+                            matcher
+                                .matches(&stderr)
+                                .map(
+                                    |(passed, message)| {
+                                        if passed {
+                                            None
+                                        } else {
+                                            Some(message)
+                                        }
+                                    },
+                                )
+                                .unwrap_or_else(Some)
+                        })
+                        .collect::<Vec<_>>();
 
-        let status = match output.status {
-            Status::Exit(code) => last_process
-                .status_matchers
-                .iter()
-                .filter_map(|matcher| {
-                    matcher
-                        .matches(&code)
-                        .map(
-                            |(passed, message)| {
-                                if passed {
-                                    None
-                                } else {
-                                    Some(message)
-                                }
-                            },
-                        )
-                        .unwrap_or_else(Some)
-                })
-                .collect::<Vec<_>>(),
-            Status::Signal(signal) => vec![format!("signaled with {}", signal)],
-            Status::Timeout => vec![format!(
-                "timed out ({} sec)",
-                last_process.timeout.as_secs()
-            )],
-        };
-
-        let stdout = output.stdout.as_bytes().to_vec();
-        let stdout_messages = last_process
-            .stdout_matchers
-            .iter()
-            .filter_map(|matcher| {
-                matcher
-                    .matches(&stdout)
-                    .map(
-                        |(passed, message)| {
-                            if passed {
-                                None
-                            } else {
-                                Some(message)
-                            }
-                        },
-                    )
-                    .unwrap_or_else(Some)
-            })
-            .collect::<Vec<_>>();
-
-        let stderr = output.stderr.as_bytes().to_vec();
-        let stderr_messages = last_process
-            .stderr_matchers
-            .iter()
-            .filter_map(|matcher| {
-                matcher
-                    .matches(&stderr)
-                    .map(
-                        |(passed, message)| {
-                            if passed {
-                                None
-                            } else {
-                                Some(message)
-                            }
-                        },
-                    )
-                    .unwrap_or_else(Some)
-            })
-            .collect::<Vec<_>>();
+                    if !status_messages.is_empty() {
+                        failures.insert(subject_of(process_name, "status"), status_messages);
+                    }
+                    if !stdout_messages.is_empty() {
+                        failures.insert(subject_of(process_name, "stdout"), stdout_messages);
+                    }
+                    if !stderr_messages.is_empty() {
+                        failures.insert(subject_of(process_name, "stderr"), stderr_messages);
+                    }
+                }
+                Err(err) => {
+                    failures.insert(subject_of(process_name, "exec"), vec![err]);
+                }
+            },
+        );
 
         let mut teardown_failures = vec![];
         self.teardown_hooks.iter().rev().for_each(|hook| {
@@ -242,17 +246,6 @@ impl TestCase {
             }
         });
 
-        let mut failures = indexmap! {};
-
-        if !status.is_empty() {
-            failures.insert(subject_of(last_process_name, "status"), status);
-        }
-        if !stdout_messages.is_empty() {
-            failures.insert(subject_of(last_process_name, "stdout"), stdout_messages);
-        }
-        if !stderr_messages.is_empty() {
-            failures.insert(subject_of(last_process_name, "stderr"), stderr_messages);
-        }
         if !teardown_failures.is_empty() {
             failures.insert("teardown".to_string(), teardown_failures);
         }

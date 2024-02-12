@@ -10,9 +10,6 @@ tests:
               proc1:
                 command:
                   - 'true'
-                expect:
-                  status:
-                    eq: 0
               proc2:
                 command:
                   - 'cat'
