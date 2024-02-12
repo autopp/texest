@@ -31,12 +31,19 @@ impl PartialEq for dyn TeardownHook {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum ProcessMode {
+    Foreground,
+    Background,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Process {
     pub command: Vec<String>,
     pub stdin: String,
     pub env: Vec<(String, String)>,
     pub timeout: Duration,
+    pub mode: ProcessMode,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
     pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
@@ -269,7 +276,7 @@ pub mod testutil {
     use crate::matcher::Matcher;
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
-    use super::{LifeCycleHook, Process, SetupHook, TeardownHook, TestCase};
+    use super::{LifeCycleHook, Process, ProcessMode, SetupHook, TeardownHook, TestCase};
 
     pub const DEFAULT_NAME: &str = "test";
     pub const DEFAULT_FILENAME: &str = "test.yaml";
@@ -332,6 +339,7 @@ pub mod testutil {
         pub stdin: &'static str,
         pub env: Vec<(&'static str, &'static str)>,
         pub timeout: u64,
+        pub mode: ProcessMode,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
         pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
@@ -348,6 +356,7 @@ pub mod testutil {
                 timeout: DEFAULT_TIMEOUT,
                 tee_stdout: false,
                 tee_stderr: false,
+                mode: ProcessMode::Foreground,
                 status_matchers: vec![],
                 stdout_matchers: vec![],
                 stderr_matchers: vec![],
@@ -366,6 +375,7 @@ pub mod testutil {
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect(),
                 timeout: Duration::from_secs(self.timeout),
+                mode: self.mode,
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
                 status_matchers: self.status_matchers,

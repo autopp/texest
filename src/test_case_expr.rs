@@ -5,7 +5,7 @@ use indexmap::{indexmap, IndexMap};
 use crate::{
     expr::{Context, EvalOutput, Expr},
     matcher::{Matcher, MatcherRegistry, StatusMatcherRegistry, StreamMatcherRegistry},
-    test_case::{Process, SetupHook, TestCase},
+    test_case::{Process, ProcessMode, SetupHook, TestCase},
     tmp_dir::TmpDirSupplier,
     validator::{Validator, Violation},
 };
@@ -21,6 +21,7 @@ pub struct ProcessExpr {
     pub stdin: Expr,
     pub env: Vec<(String, Expr)>,
     pub timeout: Duration,
+    pub mode: ProcessMode,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
 }
@@ -307,6 +308,7 @@ fn eval_process_expr<T: TmpDirSupplier>(
         stdout_matchers,
         stderr_matchers,
         timeout: process_expr.timeout,
+        mode: process_expr.mode.clone(),
         tee_stdout: process_expr.tee_stdout,
         tee_stderr: process_expr.tee_stderr,
     }
@@ -322,6 +324,7 @@ pub mod testutil {
     use crate::expr::Expr;
 
     use crate::expr::testutil::*;
+    use crate::test_case::ProcessMode;
 
     use super::ProcessExpr;
     use super::ProcessMatchersExpr;
@@ -334,12 +337,13 @@ pub mod testutil {
         pub stdin: Expr,
         pub env: Vec<(&'static str, Expr)>,
         pub timeout: u64,
+        pub mode: ProcessMode,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
     }
 
     impl ProcessExprTemplate {
-        pub fn build(&self) -> ProcessExpr {
+        pub fn build(self) -> ProcessExpr {
             ProcessExpr {
                 command: self.command.clone(),
                 stdin: self.stdin.clone(),
@@ -349,6 +353,7 @@ pub mod testutil {
                     .map(|(k, v)| (k.to_string(), v.clone()))
                     .collect(),
                 timeout: Duration::from_secs(self.timeout),
+                mode: self.mode,
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
             }
@@ -362,6 +367,7 @@ pub mod testutil {
                 stdin: literal_expr(""),
                 env: vec![],
                 timeout: 10,
+                mode: ProcessMode::Foreground,
                 tee_stdout: false,
                 tee_stderr: false,
             }
@@ -378,7 +384,9 @@ pub mod testutil {
             match self {
                 ProcessesExprTemplate::Single(p) => ProcessesExpr::Single(p.build()),
                 ProcessesExprTemplate::Multi(ps) => ProcessesExpr::Multi(
-                    ps.iter().map(|(k, v)| (k.to_string(), v.build())).collect(),
+                    ps.into_iter()
+                        .map(|(k, v)| (k.to_string(), v.build()))
+                        .collect(),
                 ),
             }
         }
@@ -529,6 +537,7 @@ mod tests {
                     stdin: "".to_string(),
                     env: vec![],
                     timeout: Duration::from_secs(10),
+                    mode: ProcessMode::Foreground,
                     tee_stdout: false,
                     tee_stderr: false,
                     status_matchers: vec![],
@@ -555,6 +564,7 @@ mod tests {
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
@@ -586,6 +596,7 @@ mod tests {
                             stdin: "hello".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
@@ -617,6 +628,7 @@ mod tests {
                             stdin: "".to_string(),
                             env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
                             timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
@@ -650,6 +662,7 @@ mod tests {
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec!(TestMatcher::new_success(Value::from(true))),
@@ -683,6 +696,7 @@ mod tests {
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
@@ -716,6 +730,7 @@ mod tests {
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
@@ -790,6 +805,7 @@ mod tests {
                         stdin: "".to_string(),
                         env: vec![],
                         timeout: Duration::from_secs(10),
+                        mode: ProcessMode::Foreground,
                         tee_stdout: false,
                         tee_stderr: false,
                         status_matchers: vec![],

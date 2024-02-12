@@ -9,6 +9,7 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
+    test_case::ProcessMode,
     test_case_expr::{
         ProcessExpr, ProcessMatchersExpr, ProcessesExpr, ProcessesMatchersExpr, TestCaseExpr,
         TestCaseExprFile,
@@ -200,6 +201,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         stdin,
         env,
         timeout: Duration::from_secs(timeout),
+        mode: ProcessMode::Foreground,
         tee_stdout,
         tee_stderr,
     }
