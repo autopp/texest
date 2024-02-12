@@ -28,7 +28,7 @@ pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
     env: E,
     timeout: Duration,
 ) -> Result<Output, String> {
-    let mut cmd = Command::new(command.get(0).unwrap())
+    let mut cmd = Command::new(command.first().unwrap())
         .args(command.get(1..).unwrap())
         .stdin(std::process::Stdio::piped())
         .envs(env)
