@@ -1,9 +1,10 @@
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
+use futures::future::join_all;
 use indexmap::{indexmap, IndexMap};
 
 use crate::{
-    exec::{execute_command, Output, Status},
+    exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
     matcher::Matcher,
 };
 
@@ -31,12 +32,19 @@ impl PartialEq for dyn TeardownHook {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum ProcessMode {
+    Foreground,
+    Background,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Process {
     pub command: Vec<String>,
     pub stdin: String,
     pub env: Vec<(String, String)>,
     pub timeout: Duration,
+    pub mode: ProcessMode,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
     pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
@@ -124,109 +132,96 @@ impl TestCase {
             };
         }
 
-        let exec_results: IndexMap<String, Result<Output, String>> = self
-            .processes
-            .iter()
-            .map(|(name, process)| {
-                let exec_result = rt.block_on(execute_command(
-                    process.command.clone(),
-                    process.stdin.clone(),
-                    process.env.clone(),
-                    process.timeout,
-                ));
-
-                let output = exec_result.map(|output| {
-                    if process.tee_stdout {
-                        println!("{}", output.stdout.to_string_lossy());
-                    }
-                    if process.tee_stderr {
-                        println!("{}", output.stderr.to_string_lossy());
-                    }
-                    output
-                });
-
-                (name.clone(), output)
-            })
-            .collect();
-
-        // FIXME: collect all processe's result
-        let last_process = self.processes.values().last().unwrap();
-        let (last_process_name, last_result) = exec_results.last().unwrap();
-
-        if let Err(err) = last_result {
-            return TestResult {
-                name: self.name.clone(),
-                failures: indexmap! { subject_of(last_process_name, "exec") => vec![err.clone()] },
-            };
+        enum Execution {
+            Foreground(Result<Output, String>),
+            Background(Result<BackgroundExec, String>),
         }
 
-        let output = last_result.as_ref().unwrap();
+        let exec_results = rt.block_on(async {
+            let mut executions: Vec<Execution> = vec![];
 
-        let status = match output.status {
-            Status::Exit(code) => last_process
-                .status_matchers
-                .iter()
-                .filter_map(|matcher| {
-                    matcher
-                        .matches(&code)
-                        .map(
-                            |(passed, message)| {
-                                if passed {
-                                    None
-                                } else {
-                                    Some(message)
-                                }
-                            },
+            for (_, process) in self.processes.iter() {
+                let execution = match process.mode {
+                    ProcessMode::Foreground => {
+                        let exec_result = execute_command(
+                            process.command.clone(),
+                            process.stdin.clone(),
+                            process.env.clone(),
+                            process.timeout,
                         )
-                        .unwrap_or_else(Some)
-                })
-                .collect::<Vec<_>>(),
-            Status::Signal(signal) => vec![format!("signaled with {}", signal)],
-            Status::Timeout => vec![format!(
-                "timed out ({} sec)",
-                last_process.timeout.as_secs()
-            )],
-        };
+                        .await;
 
-        let stdout = output.stdout.as_bytes().to_vec();
-        let stdout_messages = last_process
-            .stdout_matchers
-            .iter()
-            .filter_map(|matcher| {
-                matcher
-                    .matches(&stdout)
-                    .map(
-                        |(passed, message)| {
-                            if passed {
-                                None
-                            } else {
-                                Some(message)
+                        if let Ok(output) = &exec_result {
+                            if process.tee_stdout {
+                                println!("{}", output.stdout.to_string_lossy());
                             }
-                        },
-                    )
-                    .unwrap_or_else(Some)
-            })
-            .collect::<Vec<_>>();
+                            if process.tee_stderr {
+                                println!("{}", output.stderr.to_string_lossy());
+                            }
+                        }
 
-        let stderr = output.stderr.as_bytes().to_vec();
-        let stderr_messages = last_process
-            .stderr_matchers
-            .iter()
-            .filter_map(|matcher| {
-                matcher
-                    .matches(&stderr)
-                    .map(
-                        |(passed, message)| {
-                            if passed {
-                                None
-                            } else {
-                                Some(message)
-                            }
-                        },
-                    )
-                    .unwrap_or_else(Some)
-            })
-            .collect::<Vec<_>>();
+                        Execution::Foreground(exec_result)
+                    }
+                    ProcessMode::Background => {
+                        let background_exec = execute_background_command(
+                            process.command.clone(),
+                            process.stdin.clone(),
+                            process.env.clone(),
+                            process.timeout,
+                        )
+                        .await;
+
+                        Execution::Background(background_exec)
+                    }
+                };
+
+                executions.push(execution);
+            }
+
+            async fn collect_exec_result(execution: Execution) -> Result<Output, String> {
+                match execution {
+                    Execution::Foreground(result) => result,
+                    Execution::Background(Ok(bg)) => bg.terminate().await,
+                    Execution::Background(Err(err)) => Err(err),
+                }
+            }
+
+            join_all(executions.into_iter().map(collect_exec_result)).await
+        });
+
+        let mut failures = indexmap! {};
+        self.processes.iter().zip(exec_results).for_each(
+            |((process_name, process), exec_result)| match exec_result {
+                Ok(output) => {
+                    let status_messages = match output.status {
+                        Status::Exit(code) => run_matchers(&process.status_matchers, &code),
+                        Status::Signal(signal) => vec![format!("signaled with {}", signal)],
+                        Status::Timeout => {
+                            vec![format!("timed out ({} sec)", process.timeout.as_secs())]
+                        }
+                    };
+
+                    let stdout = output.stdout.as_bytes().to_vec();
+                    let stdout_messages = run_matchers(&process.stdout_matchers, &stdout);
+
+                    let stderr = output.stderr.as_bytes().to_vec();
+                    let stderr_messages = run_matchers(&process.stderr_matchers, &stderr);
+
+                    if !status_messages.is_empty() {
+                        failures.insert(subject_of(process_name, "status"), status_messages);
+                    }
+                    if !stdout_messages.is_empty() {
+                        failures.insert(subject_of(process_name, "stdout"), stdout_messages);
+                    }
+                    if !stderr_messages.is_empty() {
+                        failures.insert(subject_of(process_name, "stderr"), stderr_messages);
+                    }
+                }
+                Err(err) => {
+                    failures.insert(subject_of(process_name, "exec"), vec![err]);
+                }
+            },
+        );
 
         let mut teardown_failures = vec![];
         self.teardown_hooks.iter().rev().for_each(|hook| {
@@ -235,17 +230,6 @@ impl TestCase {
             }
         });
 
-        let mut failures = indexmap! {};
-
-        if !status.is_empty() {
-            failures.insert(subject_of(last_process_name, "status"), status);
-        }
-        if !stdout_messages.is_empty() {
-            failures.insert(subject_of(last_process_name, "stdout"), stdout_messages);
-        }
-        if !stderr_messages.is_empty() {
-            failures.insert(subject_of(last_process_name, "stderr"), stderr_messages);
-        }
         if !teardown_failures.is_empty() {
             failures.insert("teardown".to_string(), teardown_failures);
         }
@@ -261,6 +245,18 @@ fn subject_of<S: AsRef<str>, T: AsRef<str>>(process_name: S, subject: T) -> Stri
     format!("{}:{}", process_name.as_ref(), subject.as_ref())
 }
 
+fn run_matchers<T>(matchers: &[Box<dyn Matcher<T>>], value: &T) -> Vec<String> {
+    matchers
+        .iter()
+        .filter_map(|matcher| {
+            matcher
+                .matches(value)
+                .map(|(passed, message)| if passed { None } else { Some(message) })
+                .unwrap_or_else(Some)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 pub mod testutil {
     use indexmap::{indexmap, IndexMap};
@@ -269,7 +265,7 @@ pub mod testutil {
     use crate::matcher::Matcher;
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
-    use super::{LifeCycleHook, Process, SetupHook, TeardownHook, TestCase};
+    use super::{LifeCycleHook, Process, ProcessMode, SetupHook, TeardownHook, TestCase};
 
     pub const DEFAULT_NAME: &str = "test";
     pub const DEFAULT_FILENAME: &str = "test.yaml";
@@ -332,6 +328,7 @@ pub mod testutil {
         pub stdin: &'static str,
         pub env: Vec<(&'static str, &'static str)>,
         pub timeout: u64,
+        pub mode: ProcessMode,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
         pub status_matchers: Vec<Box<dyn Matcher<i32>>>,
@@ -348,6 +345,7 @@ pub mod testutil {
                 timeout: DEFAULT_TIMEOUT,
                 tee_stdout: false,
                 tee_stderr: false,
+                mode: ProcessMode::Foreground,
                 status_matchers: vec![],
                 stdout_matchers: vec![],
                 stderr_matchers: vec![],
@@ -366,6 +364,7 @@ pub mod testutil {
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect(),
                 timeout: Duration::from_secs(self.timeout),
+                mode: self.mode,
                 tee_stdout: self.tee_stdout,
                 tee_stderr: self.tee_stderr,
                 status_matchers: self.status_matchers,
@@ -407,7 +406,7 @@ pub mod testutil {
                 name: DEFAULT_NAME,
                 filename: DEFAULT_FILENAME,
                 path: DEFAULT_PATH,
-                processes: indexmap! {},
+                processes: indexmap! { "main" => ProcessTemplate::default() },
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
             }
@@ -478,6 +477,40 @@ mod tests {
             #[case("command is timed out",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["sleep", "1"], timeout: 0, ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec!["timed out (0 sec)".to_string()]} })]
+            #[case("with background process",
+                TestCaseTemplate {
+                    processes: indexmap! {
+                        "bg" => ProcessTemplate {
+                            command: vec!["bash", "-c", r#"
+                                trap 'echo goodbye >&2; exit 2' TERM
+                                echo hello
+                                sleep 0.01
+                                while true; do true; done
+                            "#
+                            ],
+                            mode: ProcessMode::Background,
+                            status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            stdout_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            stderr_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            ..Default::default()
+                        },
+                        "main" => ProcessTemplate {
+                            command: vec!["false"],
+                            status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
+                            ..Default::default()
+                        }
+                    },
+                    ..Default::default()
+                },
+                TestResult {
+                    name: DEFAULT_NAME.to_string(),
+                    failures: indexmap! {
+                        format!("bg:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(2)],
+                        format!("bg:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello\n".as_bytes())],
+                        format!("bg:{}", *STDERR_STRING) => vec![TestMatcher::failure_message("goodbye\n".as_bytes())],
+                        format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(1)]
+                    }
+                })]
             fn when_exec_succeeded(
                 #[case] title: &str,
                 #[case] given: TestCaseTemplate,
