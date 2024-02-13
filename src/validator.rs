@@ -257,11 +257,6 @@ impl Validator {
             .and_then(|x| self.in_field(field, |v| v.must_be_bool(x)))
     }
 
-    pub fn may_have_uint<S: AsRef<str> + Copy>(&mut self, m: &Map, field: S) -> Option<u64> {
-        m.get(field.as_ref())
-            .and_then(|x| self.in_field(field, |v| v.must_be_uint(x)))
-    }
-
     pub fn must_have_string<S: AsRef<str> + Copy>(&mut self, m: &Map, field: S) -> Option<String> {
         match m.get(field.as_ref()) {
             Some(x) => self.in_field(field, |v| v.must_be_string(x)),
@@ -1197,55 +1192,6 @@ mod tests {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
                     message: "should be bool, but is string".to_string(),
-                }],
-                v.violations,
-            )
-        }
-    }
-
-    mod may_have_uint {
-        use indexmap::indexmap;
-
-        use super::*;
-        use pretty_assertions::assert_eq;
-
-        #[test]
-        fn when_map_contains_int_returns_it() {
-            let mut v = Validator::new(FILENAME);
-            let value = 42.into();
-            let m = indexmap! { "field" => &value};
-
-            let actual = v.may_have_uint(&m, "field");
-
-            assert_eq!(Some(42), actual);
-            assert_eq!(Vec::<Violation>::new(), v.violations)
-        }
-
-        #[test]
-        fn when_map_dosent_contain_int_returns_none() {
-            let mut v = Validator::new(FILENAME);
-            let m = indexmap! {};
-
-            let actual = v.may_have_uint(&m, "field");
-
-            assert_eq!(None, actual);
-            assert_eq!(Vec::<Violation>::new(), v.violations)
-        }
-
-        #[test]
-        fn when_map_contains_not_int_add_violation() {
-            let mut v = Validator::new(FILENAME);
-            let value = "answer".into();
-            let m = indexmap! { "field" => &value };
-
-            let actual = v.may_have_uint(&m, "field");
-
-            assert_eq!(None, actual);
-            assert_eq!(
-                vec![Violation {
-                    filename: FILENAME.to_string(),
-                    path: "$.field".to_string(),
-                    message: "should be uint, but is string".to_string(),
                 }],
                 v.violations,
             )

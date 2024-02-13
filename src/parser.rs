@@ -192,7 +192,9 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let timeout = v.may_have_uint(m, "timeout").unwrap_or(DEFAULT_TIMEOUT);
+    let timeout = v
+        .may_have_duration(m, "timeout")
+        .unwrap_or(Duration::from_secs(DEFAULT_TIMEOUT));
     let mode = v
         .may_have_map(m, "background", |_, _| ProcessMode::Background)
         .unwrap_or(ProcessMode::Foreground);
@@ -203,7 +205,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         command,
         stdin,
         env,
-        timeout: Duration::from_secs(timeout),
+        timeout,
         mode,
         tee_stdout,
         tee_stderr,
@@ -334,7 +336,7 @@ tests:
     - command:
         - echo
         - hello
-      timeout: 5", vec![TestCaseExprTemplate {
+      timeout: 5s", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
                     timeout: 5,
