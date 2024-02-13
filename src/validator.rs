@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::ast::{Ast, Map};
 use serde_yaml::{Sequence, Value};
 
@@ -145,6 +147,30 @@ impl Validator {
         s.map(String::from)
     }
 
+    pub fn must_be_duration(&mut self, x: &Value) -> Option<Duration> {
+        if let Some(n) = x.as_u64() {
+            return Some(std::time::Duration::from_secs(n));
+        }
+
+        if let Some(s) = x.as_str() {
+            return if let Ok(d) = duration_str::parse(s) {
+                Some(d)
+            } else {
+                self.add_violation(format!(
+                    "should be positive integer or duration string, but is invalid string \"{}\"",
+                    s
+                ));
+                None
+            };
+        }
+
+        self.add_violation(format!(
+            "should be positive integer or duration string, but is {}",
+            x.type_name()
+        ));
+        None
+    }
+
     pub fn may_be_qualified<'a>(&mut self, x: &'a Value) -> Option<(&'a str, &'a Value)> {
         self.may_be_map(x).and_then(|m| {
             if m.len() == 1 {
@@ -244,6 +270,15 @@ impl Validator {
                 None
             }
         }
+    }
+
+    pub fn may_have_duration<S: AsRef<str> + Copy>(
+        &mut self,
+        m: &Map,
+        field: S,
+    ) -> Option<Duration> {
+        m.get(field.as_ref())
+            .and_then(|x| self.in_field(field, |v| v.must_be_duration(x)))
     }
 
     pub fn map_seq<T>(
@@ -686,6 +721,63 @@ mod tests {
                     filename: FILENAME.to_string(),
                     path: "$".to_string(),
                     message: "should be string, but is bool".to_string(),
+                }],
+                v.violations,
+            )
+        }
+    }
+
+    mod must_be_duration {
+        use std::time::Duration;
+
+        use super::*;
+        use pretty_assertions::assert_eq;
+        use rstest::rstest;
+
+        #[test]
+        fn returns_the_sec_duration_when_value_is_uint() {
+            let mut v = Validator::new(FILENAME);
+            let value = Value::from(42);
+
+            assert_eq!(Some(Duration::from_secs(42)), v.must_be_duration(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
+        }
+
+        #[test]
+        fn returns_the_duration_when_value_is_duration_string() {
+            let mut v = Validator::new(FILENAME);
+            let value = Value::from("42ms");
+
+            assert_eq!(Some(Duration::from_millis(42)), v.must_be_duration(&value));
+            assert_eq!(Vec::<Violation>::new(), v.violations)
+        }
+
+        #[rstest]
+        #[case(Value::from(-1), "should be positive integer or duration string, but is int")]
+        #[case(
+            Value::from(0.1),
+            "should be positive integer or duration string, but is float"
+        )]
+        #[case(
+            Value::from(true),
+            "should be positive integer or duration string, but is bool"
+        )]
+        #[case(
+            Value::from("1sss"),
+            "should be positive integer or duration string, but is invalid string \"1sss\""
+        )]
+        fn returns_none_when_value_is_not_valid_duration(
+            #[case] given: Value,
+            #[case] expected_message: &str,
+        ) {
+            let mut v = Validator::new(FILENAME);
+
+            assert_eq!(None, v.must_be_duration(&given));
+            assert_eq!(
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: expected_message.to_string(),
                 }],
                 v.violations,
             )
@@ -1212,6 +1304,55 @@ mod tests {
                     message: "should be string, but is uint".to_string(),
                 }],
                 v.violations,
+            )
+        }
+    }
+
+    mod may_have_duration {
+        use super::*;
+        use indexmap::indexmap;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn when_map_contains_duration_return_it() {
+            let mut v = Validator::new(FILENAME);
+            let d = Value::from("42ms");
+            let m = indexmap! { "field" => &d };
+
+            let actual = v.may_have_duration(&m, "field");
+
+            assert_eq!(Some(Duration::from_millis(42)), actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
+        }
+
+        #[test]
+        fn when_map_dosent_contain_return_none() {
+            let mut v = Validator::new(FILENAME);
+            let m = indexmap! {};
+
+            let actual = v.may_have_duration(&m, "field");
+
+            assert_eq!(None, actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
+        }
+
+        #[test]
+        fn when_map_contains_not_duration_add_violation() {
+            let mut v = Validator::new(FILENAME);
+            let value = true.into();
+            let m = indexmap! { "field" => &value };
+
+            let actual = v.may_have_duration(&m, "field");
+
+            assert_eq!(None, actual);
+            assert_eq!(
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be positive integer or duration string, but is bool"
+                        .to_string(),
+                }],
+                v.violations
             )
         }
     }
