@@ -9,7 +9,7 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
-    test_case::ProcessMode,
+    test_case::{BackgroundConfig, ProcessMode, WaitCondition},
     test_case_expr::{
         ProcessExpr, ProcessMatchersExpr, ProcessesExpr, ProcessesMatchersExpr, TestCaseExpr,
         TestCaseExprFile,
@@ -196,7 +196,32 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         .may_have_duration(m, "timeout")
         .unwrap_or(Duration::from_secs(DEFAULT_TIMEOUT));
     let mode = v
-        .may_have_map(m, "background", |_, _| ProcessMode::Background)
+        .may_have_map(m, "background", |v, background| {
+            let wait_condition = v
+                .may_have_map(background, "wait_for", |v, wait_for| {
+                    v.must_have_string(wait_for, "type")
+                        .and_then(|condition_type| match &*condition_type {
+                            "sleep" => {
+                                let duration = v
+                                    .must_have_duration(wait_for, "duration")
+                                    .unwrap_or(Duration::from_secs(0));
+                                Some(WaitCondition::Sleep(duration))
+                            }
+                            _ => {
+                                v.in_field("type", |v| {
+                                    v.add_violation(format!(
+                                        "\"{}\" is not valid wait condition type",
+                                        condition_type
+                                    ));
+                                });
+                                None
+                            }
+                        })
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            ProcessMode::Background(BackgroundConfig { wait_condition })
+        })
         .unwrap_or(ProcessMode::Foreground);
     let tee_stdout = v.may_have_bool(m, "teeStdout").unwrap_or(false);
     let tee_stderr = v.may_have_bool(m, "teeStderr").unwrap_or(false);
@@ -274,6 +299,7 @@ mod tests {
                 testutil::{env_var_expr, literal_expr},
                 Expr,
             },
+            test_case::BackgroundConfig,
             test_case_expr::testutil::{
                 ProcessExprTemplate, ProcessMatchersExprTemplate, ProcessesExprTemplate,
                 ProcessesMatchersExprTemplate, TestCaseExprTemplate,
@@ -498,7 +524,7 @@ tests:
                         literal_expr("echo"),
                         literal_expr("hello"),
                     ],
-                    mode: ProcessMode::Background,
+                    mode: ProcessMode::Background(BackgroundConfig::default()),
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
@@ -506,6 +532,32 @@ tests:
                         literal_expr("echo"),
                         literal_expr("world"),
                     ],
+                    ..Default::default()
+                },
+            }),
+            ..Default::default()
+        }])]
+        #[case("with background processes", "
+tests:
+    - processes:
+        main:
+            command:
+                - echo
+                - hello
+            background:
+                wait_for:
+                    type: sleep
+                    duration: 100ms
+    ", vec![TestCaseExprTemplate {
+            processes: ProcessesExprTemplate::Multi(indexmap! {
+                "main" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("hello"),
+                    ],
+                    mode: ProcessMode::Background(BackgroundConfig {
+                        wait_condition: WaitCondition::Sleep(Duration::from_millis(100)),
+                    }),
                     ..Default::default()
                 },
             }),
@@ -635,6 +687,10 @@ tests:
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
         #[case("when multi processes is not map", "tests: [processes: true]", vec![("$.tests[0].processes", "should be map, but is bool")])]
         #[case("when multi processes is empty", "tests: [processes: {}]", vec![("$.tests[0].processes", "should not be empty")])]
+        #[case("when backgound is not map", "tests: [processes: { main: { command: [echo], background: 42 } }]", vec![("$.tests[0].processes.main.background", "should be map, but is uint")])]
+        #[case("when wait condition type is not string", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: 42 } } } }]", vec![("$.tests[0].processes.main.background.wait_for.type", "should be string, but is uint")])]
+        #[case("when wait condition type is not defined", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: unknown } } } }]", vec![("$.tests[0].processes.main.background.wait_for.type", "\"unknown\" is not valid wait condition type")])]
+        #[case("when sleep wait condition dose not have duration", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: sleep, duration: true } } } }]", vec![("$.tests[0].processes.main.background.wait_for.duration", "should be duration, but is bool")])]
         #[case("when some process is not map", "tests: [processes: {proc1: true}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
         #[case("when some process's command is empty", "tests: [processes: {proc1: {command: []}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
         #[case("when backgroud is not map", "tests: [processes: {proc1: {command: [true], background: true}}]", vec![("$.tests[0].processes.proc1.background", "should be map, but is bool")])]

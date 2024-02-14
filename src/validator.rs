@@ -157,17 +157,14 @@ impl Validator {
                 Some(d)
             } else {
                 self.add_violation(format!(
-                    "should be positive integer or duration string, but is invalid string \"{}\"",
+                    "should be duration, but is invalid string \"{}\"",
                     s
                 ));
                 None
             };
         }
 
-        self.add_violation(format!(
-            "should be positive integer or duration string, but is {}",
-            x.type_name()
-        ));
+        self.add_violation(format!("should be duration, but is {}", x.type_name()));
         None
     }
 
@@ -274,6 +271,18 @@ impl Validator {
     ) -> Option<Duration> {
         m.get(field.as_ref())
             .and_then(|x| self.in_field(field, |v| v.must_be_duration(x)))
+    }
+
+    pub fn must_have_duration<S: AsRef<str> + Copy>(
+        &mut self,
+        m: &Map,
+        field: S,
+    ) -> Option<Duration> {
+        if !m.contains_key(field.as_ref()) {
+            self.add_violation(format!("should have .{} as duration", field.as_ref()));
+            return None;
+        }
+        self.may_have_duration(m, field)
     }
 
     pub fn map_seq<T>(
@@ -748,18 +757,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case(Value::from(-1), "should be positive integer or duration string, but is int")]
-        #[case(
-            Value::from(0.1),
-            "should be positive integer or duration string, but is float"
-        )]
-        #[case(
-            Value::from(true),
-            "should be positive integer or duration string, but is bool"
-        )]
+        #[case(Value::from(-1), "should be duration, but is int")]
+        #[case(Value::from(0.1), "should be duration, but is float")]
+        #[case(Value::from(true), "should be duration, but is bool")]
         #[case(
             Value::from("1sss"),
-            "should be positive integer or duration string, but is invalid string \"1sss\""
+            "should be duration, but is invalid string \"1sss\""
         )]
         fn returns_none_when_value_is_not_valid_duration(
             #[case] given: Value,
@@ -1295,8 +1298,62 @@ mod tests {
                 vec![Violation {
                     filename: FILENAME.to_string(),
                     path: "$.field".to_string(),
-                    message: "should be positive integer or duration string, but is bool"
-                        .to_string(),
+                    message: "should be duration, but is bool".to_string(),
+                }],
+                v.violations
+            )
+        }
+    }
+
+    mod must_have_duration {
+        use super::*;
+        use indexmap::indexmap;
+        use pretty_assertions::assert_eq;
+
+        #[test]
+        fn when_map_contains_duration_return_it() {
+            let mut v = Validator::new(FILENAME);
+            let d = Value::from("42ms");
+            let m = indexmap! { "field" => &d };
+
+            let actual = v.must_have_duration(&m, "field");
+
+            assert_eq!(Some(Duration::from_millis(42)), actual);
+            assert_eq!(Vec::<Violation>::new(), v.violations)
+        }
+
+        #[test]
+        fn when_map_dosent_contain_add_violation() {
+            let mut v = Validator::new(FILENAME);
+            let m = indexmap! {};
+
+            let actual = v.must_have_duration(&m, "field");
+
+            assert_eq!(None, actual);
+            assert_eq!(
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$".to_string(),
+                    message: "should have .field as duration".to_string(),
+                }],
+                v.violations
+            )
+        }
+
+        #[test]
+        fn when_map_contains_not_duration_add_violation() {
+            let mut v = Validator::new(FILENAME);
+            let value = true.into();
+            let m = indexmap! { "field" => &value };
+
+            let actual = v.must_have_duration(&m, "field");
+
+            assert_eq!(None, actual);
+            assert_eq!(
+                vec![Violation {
+                    filename: FILENAME.to_string(),
+                    path: "$.field".to_string(),
+                    message: "should be duration, but is bool".to_string(),
                 }],
                 v.violations
             )

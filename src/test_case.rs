@@ -1,3 +1,5 @@
+mod wait_condition;
+
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
 use futures::future::join_all;
@@ -7,6 +9,8 @@ use crate::{
     exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
     matcher::Matcher,
 };
+
+pub use self::wait_condition::WaitCondition;
 
 pub trait LifeCycleHook: Debug {
     fn serialize(&self) -> (&str, serde_yaml::Value);
@@ -32,10 +36,15 @@ impl PartialEq for dyn TeardownHook {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct BackgroundConfig {
+    pub wait_condition: WaitCondition,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum ProcessMode {
     Foreground,
-    Background,
+    Background(BackgroundConfig),
 }
 
 #[derive(Debug, PartialEq)]
@@ -162,7 +171,7 @@ impl TestCase {
 
                         Execution::Foreground(exec_result)
                     }
-                    ProcessMode::Background => {
+                    ProcessMode::Background(_) => {
                         let background_exec = execute_background_command(
                             process.command.clone(),
                             process.stdin.clone(),
@@ -488,7 +497,7 @@ mod tests {
                                 while true; do true; done
                             "#
                             ],
-                            mode: ProcessMode::Background,
+                            mode: ProcessMode::Background(BackgroundConfig { wait_condition: WaitCondition::Sleep(Duration::from_secs(50)) }),
                             status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stdout_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stderr_matchers: vec![TestMatcher::new_failure(Value::from(true))],
