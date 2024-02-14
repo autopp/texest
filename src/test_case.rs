@@ -1,3 +1,5 @@
+mod wait_condition;
+
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
 use futures::future::join_all;
@@ -7,6 +9,8 @@ use crate::{
     exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
     matcher::Matcher,
 };
+
+pub use self::wait_condition::WaitCondition;
 
 pub trait LifeCycleHook: Debug {
     fn serialize(&self) -> (&str, serde_yaml::Value);
@@ -32,10 +36,15 @@ impl PartialEq for dyn TeardownHook {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct BackgroundConfig {
+    pub wait_condition: WaitCondition,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum ProcessMode {
     Foreground,
-    Background,
+    Background(BackgroundConfig),
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,7 +150,7 @@ impl TestCase {
             let mut executions: Vec<Execution> = vec![];
 
             for (_, process) in self.processes.iter() {
-                let execution = match process.mode {
+                let execution = match &process.mode {
                     ProcessMode::Foreground => {
                         let exec_result = execute_command(
                             process.command.clone(),
@@ -162,12 +171,13 @@ impl TestCase {
 
                         Execution::Foreground(exec_result)
                     }
-                    ProcessMode::Background => {
+                    ProcessMode::Background(cfg) => {
                         let background_exec = execute_background_command(
                             process.command.clone(),
                             process.stdin.clone(),
                             process.env.clone(),
                             process.timeout,
+                            &cfg.wait_condition,
                         )
                         .await;
 
@@ -484,11 +494,10 @@ mod tests {
                             command: vec!["bash", "-c", r#"
                                 trap 'echo goodbye >&2; exit 2' TERM
                                 echo hello
-                                sleep 0.01
                                 while true; do true; done
                             "#
                             ],
-                            mode: ProcessMode::Background,
+                            mode: ProcessMode::Background(BackgroundConfig { wait_condition: WaitCondition::Sleep(Duration::from_millis(50)) }),
                             status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stdout_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stderr_matchers: vec![TestMatcher::new_failure(Value::from(true))],

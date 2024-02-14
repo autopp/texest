@@ -9,7 +9,8 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 use tokio::process::Command;
-use tokio::time::sleep;
+
+use crate::test_case::WaitCondition;
 
 #[derive(PartialEq, Debug)]
 pub enum Status {
@@ -74,6 +75,7 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
     stdin: String,
     env: E,
     timeout: Duration,
+    wait_condition: &WaitCondition,
 ) -> Result<BackgroundExec, String> {
     let mut cmd = Command::new(command.first().unwrap())
         .args(command.get(1..).unwrap())
@@ -89,9 +91,7 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
         .await
         .map_err(|err| err.to_string())?;
 
-    // FIXME: temporary workaround
-    // wait for user given condition
-    sleep(Duration::from_millis(100)).await;
+    wait_condition.wait().await?;
 
     Ok(BackgroundExec {
         child: cmd,
@@ -190,32 +190,33 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     mod execute_background_command {
         use super::*;
         use pretty_assertions::assert_eq;
         use rstest::*;
-        use tokio::time::sleep;
 
         #[rstest]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 5, Status::Exit(1), "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(1), "hello\n", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello", "", vec![], 5, Status::Exit(0), "hello\n", "")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(0), "hello\n", "")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; sleep 2; echo sleeped; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 1, Status::Timeout, "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; sleep 2; echo sleeped; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 1, WaitCondition::Sleep(Duration::from_millis(50)), Status::Timeout, "hello\n", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; cat; while true; do true; done", "hello", vec![], 5, Status::Exit(1), "hello", "termed\n")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; cat; while true; do true; done", "hello", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(1), "hello", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; printenv MESSAGE; while true; do true; done", "", vec![("MESSAGE", "hello")], 5, Status::Exit(1), "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; printenv MESSAGE; while true; do true; done", "", vec![("MESSAGE", "hello")], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(1), "hello\n", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; kill -INT $$", "", vec![], 5, Status::Signal(2), "", "")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; kill -INT $$", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Signal(2), "", "")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; kill -INT $$' TERM; echo hello; while true; do true; done", "", vec![], 5, Status::Signal(2), "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; kill -INT $$' TERM; echo hello; while true; do true; done", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Signal(2), "hello\n", "termed\n")]
         async fn success_cases(
             #[case] command: &str,
             #[case] stdin: &str,
             #[case] env: Vec<(&str, &str)>,
             #[case] timeout: u64,
+            #[case] wait_condition: WaitCondition,
             #[case] status: Status,
             #[case] stdout: &str,
             #[case] stderr: &str,
@@ -225,11 +226,11 @@ mod tests {
                 stdin.to_string(),
                 env,
                 Duration::from_secs(timeout),
+                &wait_condition,
             )
             .await
             .unwrap();
 
-            sleep(Duration::from_millis(50)).await;
             let actual = bg.terminate().await;
 
             assert_eq!(
