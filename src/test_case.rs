@@ -150,7 +150,7 @@ impl TestCase {
             let mut executions: Vec<Execution> = vec![];
 
             for (_, process) in self.processes.iter() {
-                let execution = match process.mode {
+                let execution = match &process.mode {
                     ProcessMode::Foreground => {
                         let exec_result = execute_command(
                             process.command.clone(),
@@ -171,12 +171,13 @@ impl TestCase {
 
                         Execution::Foreground(exec_result)
                     }
-                    ProcessMode::Background(_) => {
+                    ProcessMode::Background(cfg) => {
                         let background_exec = execute_background_command(
                             process.command.clone(),
                             process.stdin.clone(),
                             process.env.clone(),
                             process.timeout,
+                            &cfg.wait_condition,
                         )
                         .await;
 
@@ -493,11 +494,10 @@ mod tests {
                             command: vec!["bash", "-c", r#"
                                 trap 'echo goodbye >&2; exit 2' TERM
                                 echo hello
-                                sleep 0.01
                                 while true; do true; done
                             "#
                             ],
-                            mode: ProcessMode::Background(BackgroundConfig { wait_condition: WaitCondition::Sleep(Duration::from_secs(50)) }),
+                            mode: ProcessMode::Background(BackgroundConfig { wait_condition: WaitCondition::Sleep(Duration::from_millis(50)) }),
                             status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stdout_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stderr_matchers: vec![TestMatcher::new_failure(Value::from(true))],
