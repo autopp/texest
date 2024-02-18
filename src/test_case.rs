@@ -1,4 +1,4 @@
-mod wait_condition;
+pub mod wait_condition;
 
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
@@ -447,6 +447,7 @@ mod tests {
             use crate::test_case::testutil::{
                 HookHistory, ProcessTemplate, TestCaseTemplate, TestHook, DEFAULT_NAME,
             };
+            use crate::test_case::wait_condition::SleepCondition;
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -497,7 +498,9 @@ mod tests {
                                 while true; do true; done
                             "#
                             ],
-                            mode: ProcessMode::Background(BackgroundConfig { wait_condition: WaitCondition::Sleep(Duration::from_millis(50)) }),
+                            mode: ProcessMode::Background(BackgroundConfig {
+                                wait_condition: WaitCondition::Sleep(SleepCondition { duration: Duration::from_millis(50) })
+                            }),
                             status_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stdout_matchers: vec![TestMatcher::new_failure(Value::from(true))],
                             stderr_matchers: vec![TestMatcher::new_failure(Value::from(true))],

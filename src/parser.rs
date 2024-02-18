@@ -9,7 +9,7 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
-    test_case::{BackgroundConfig, ProcessMode, WaitCondition},
+    test_case::{wait_condition::SleepCondition, BackgroundConfig, ProcessMode, WaitCondition},
     test_case_expr::{
         ProcessExpr, ProcessMatchersExpr, ProcessesExpr, ProcessesMatchersExpr, TestCaseExpr,
         TestCaseExprFile,
@@ -205,7 +205,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
                                 let duration = v
                                     .must_have_duration(wait_for, "duration")
                                     .unwrap_or(Duration::from_secs(0));
-                                Some(WaitCondition::Sleep(duration))
+                                Some(WaitCondition::Sleep(SleepCondition { duration }))
                             }
                             _ => {
                                 v.in_field("type", |v| {
@@ -556,7 +556,7 @@ tests:
                         literal_expr("hello"),
                     ],
                     mode: ProcessMode::Background(BackgroundConfig {
-                        wait_condition: WaitCondition::Sleep(Duration::from_millis(100)),
+                        wait_condition: WaitCondition::Sleep(SleepCondition { duration: Duration::from_millis(100) }),
                     }),
                     ..Default::default()
                 },
