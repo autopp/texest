@@ -193,24 +193,25 @@ mod tests {
     #[allow(clippy::too_many_arguments)]
     mod execute_background_command {
         use super::*;
+        use crate::test_case::wait_condition::SleepCondition;
         use pretty_assertions::assert_eq;
         use rstest::*;
 
         #[rstest]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(1), "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 5, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Exit(1), "hello\n", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(0), "hello\n", "")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; echo hello", "", vec![], 5, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Exit(0), "hello\n", "")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; sleep 2; echo sleeped; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 1, WaitCondition::Sleep(Duration::from_millis(50)), Status::Timeout, "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; sleep 2; echo sleeped; exit 1' TERM; echo hello; while true; do true; done", "", vec![], 1, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Timeout, "hello\n", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; cat; while true; do true; done", "hello", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(1), "hello", "termed\n")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; cat; while true; do true; done", "hello", vec![], 5, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Exit(1), "hello", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; printenv MESSAGE; while true; do true; done", "", vec![("MESSAGE", "hello")], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Exit(1), "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; printenv MESSAGE; while true; do true; done", "", vec![("MESSAGE", "hello")], 5, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Exit(1), "hello\n", "termed\n")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; exit 1' TERM; kill -INT $$", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Signal(2), "", "")]
+        #[case("trap 'echo termed >&2; exit 1' TERM; kill -INT $$", "", vec![], 5, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Signal(2), "", "")]
         #[tokio::test]
-        #[case("trap 'echo termed >&2; kill -INT $$' TERM; echo hello; while true; do true; done", "", vec![], 5, WaitCondition::Sleep(Duration::from_millis(50)), Status::Signal(2), "hello\n", "termed\n")]
+        #[case("trap 'echo termed >&2; kill -INT $$' TERM; echo hello; while true; do true; done", "", vec![], 5, WaitCondition::Sleep(SleepCondition{ duration: Duration::from_millis(50) }), Status::Signal(2), "hello\n", "termed\n")]
         async fn success_cases(
             #[case] command: &str,
             #[case] stdin: &str,

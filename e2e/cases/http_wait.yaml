@@ -1,0 +1,26 @@
+tests:
+  - name: 'background process'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - processes:
+              server:
+                command:
+                  - test_server/target/debug/test_server
+                background:
+                  wait_for:
+                    type: http
+                    port: 4567
+                    path: /health
+                    initial_delay: 100ms
+            expect:
+              processes:
+                server:
+                  status:
+                    eq: 0
+    expect:
+      status:
+        eq: 0
