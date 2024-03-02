@@ -67,6 +67,7 @@ pub struct TestCase {
     pub filename: String,
     pub path: String,
     pub processes: IndexMap<String, Process>,
+    pub files_matchers: IndexMap<String, Vec<Box<dyn Matcher<Vec<u8>>>>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
 }
@@ -233,6 +234,34 @@ impl TestCase {
             },
         );
 
+        self.files_matchers.iter().for_each(|(path, matchers)| {
+            let subject = subject_of("file", path);
+
+            match std::fs::metadata(path) {
+                Ok(metadata) => {
+                    if !metadata.is_file() {
+                        failures.insert(subject, vec!["is not file".to_string()]);
+                        return;
+                    }
+
+                    match std::fs::read(path) {
+                        Ok(content) => {
+                            let messages = run_matchers(matchers, &content);
+                            if !messages.is_empty() {
+                                failures.insert(subject, messages);
+                            }
+                        }
+                        Err(_) => {
+                            failures.insert(subject, vec!["cannot read file".to_string()]);
+                        }
+                    };
+                }
+                Err(_) => {
+                    failures.insert(subject, vec!["dose not exist".to_string()]);
+                }
+            };
+        });
+
         let mut teardown_failures = vec![];
         self.teardown_hooks.iter().rev().for_each(|hook| {
             if let Err(err) = hook.teardown() {
@@ -384,11 +413,13 @@ pub mod testutil {
         }
     }
 
+    type FilesMatchers = IndexMap<&'static str, Vec<Box<dyn Matcher<Vec<u8>>>>>;
     pub struct TestCaseTemplate {
         pub name: &'static str,
         pub filename: &'static str,
         pub path: &'static str,
         pub processes: IndexMap<&'static str, ProcessTemplate>,
+        pub files_matchers: FilesMatchers,
         pub setup_hooks: Vec<Box<dyn SetupHook>>,
         pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
     }
@@ -404,6 +435,11 @@ pub mod testutil {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.build()))
                     .collect(),
+                files_matchers: self
+                    .files_matchers
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
                 setup_hooks: self.setup_hooks,
                 teardown_hooks: self.teardown_hooks,
             }
@@ -417,6 +453,7 @@ pub mod testutil {
                 filename: DEFAULT_FILENAME,
                 path: DEFAULT_PATH,
                 processes: indexmap! { "main" => ProcessTemplate::default() },
+                files_matchers: indexmap! {},
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
             }
@@ -448,6 +485,8 @@ mod tests {
                 HookHistory, ProcessTemplate, TestCaseTemplate, TestHook, DEFAULT_NAME,
             };
             use crate::test_case::wait_condition::SleepCondition;
+
+            use self::tests::testutil::{DEFAULT_FILENAME, DEFAULT_PATH};
 
             use super::*;
             use pretty_assertions::assert_eq;
@@ -531,6 +570,70 @@ mod tests {
                 let actual = given.build().run();
 
                 assert_eq!(expected, actual, "{}", title);
+            }
+
+            #[rstest]
+            #[case("file exists, matcher is succeeded",
+                "echo -n hello >{}",
+                vec![TestMatcher::new_success(Value::from(true))],
+                None)]
+            #[case("file exists, matcher is failed",
+                "echo -n hello >{}",
+                vec![TestMatcher::new_failure(Value::from(true))],
+                Some(vec![TestMatcher::failure_message("hello".as_bytes())]))]
+            #[case("file dose not exist",
+                "rm -f {}",
+                vec![TestMatcher::new_failure(Value::from(true))],
+                Some(vec!["dose not exist".to_string()]))]
+            #[case("given is not file",
+                "mkdir -p {}",
+                vec![TestMatcher::new_failure(Value::from(true))],
+                Some(vec!["is not file".to_string()]))]
+            #[case("cannot read file",
+                "echo -n hello >{}; chmod 0200 {}",
+                vec![TestMatcher::new_failure(Value::from(true))],
+                Some(vec!["cannot read file".to_string()]))]
+            fn when_exec_succeeded_with_files_matcher(
+                #[case] title: &str,
+                #[case] command: &str,
+                #[case] matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+                #[case] expected_messages: Option<Vec<String>>,
+            ) {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("test.txt").to_str().unwrap().to_string();
+                let command_with_path = command.replace("{}", &path);
+
+                let given = TestCase {
+                    name: DEFAULT_NAME.to_string(),
+                    filename: DEFAULT_FILENAME.to_string(),
+                    path: DEFAULT_PATH.to_string(),
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: vec!["bash".to_string(), "-c".to_string(), command_with_path],
+                            env: vec![],
+                            stdin: "".to_string(),
+                            timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
+                            tee_stdout: false,
+                            tee_stderr: false,
+                            status_matchers: vec![],
+                            stdout_matchers: vec![],
+                            stderr_matchers: vec![],
+                        }
+                    },
+                    files_matchers: indexmap! { path.clone() => matchers },
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
+                };
+
+                let expected = TestResult {
+                    name: DEFAULT_NAME.to_string(),
+                    failures: expected_messages
+                        .map(|messages| indexmap! { format!("file:{}", path) => messages.clone() })
+                        .unwrap_or_default(),
+                };
+
+                assert_eq!(expected, given.run(), "{}", title);
             }
 
             #[rstest]

@@ -94,9 +94,9 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             })
                             .unwrap_or_else(|| ProcessesExpr::Single(parse_process(v, &test)));
 
-                        let matcher_exprs: ProcessesMatchersExpr = v
+                        let (processes_matchers, files_matchers): (ProcessesMatchersExpr,  IndexMap<String, IndexMap<String, Expr>>) = v
                             .may_have_map(&test, "expect", |v, expect| {
-                                v.may_have_map(expect, "processes", |v, processes| {
+                                let processes_matchers = v.may_have_map(expect, "processes", |v, processes| {
                                     ProcessesMatchersExpr::Multi(
                                         processes
                                             .iter()
@@ -115,12 +115,30 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                                 })
                                 .unwrap_or_else(|| {
                                     ProcessesMatchersExpr::Single(parse_expectations(v, expect))
-                                })
+                                });
+
+                                let files_matchers = v.may_have_map(expect, "files", |v, files| {
+                                    files
+                                        .iter()
+                                        .filter_map(|(path, expectations)| {
+                                            v.in_field(path, |v| {
+                                                v.must_be_map(expectations).map(|expectations| {
+                                                    (
+                                                        path.to_string(),
+                                                        parse_expected(v, &expectations),
+                                                    )
+                                                })
+                                            })
+                                        })
+                                        .collect()
+                                }).unwrap_or_default();
+
+                                (processes_matchers, files_matchers)
                             })
-                            .unwrap_or(ProcessesMatchersExpr::Multi(indexmap! {}));
+                            .unwrap_or((ProcessesMatchersExpr::Multi(indexmap! {}), indexmap! {}));
 
                         if let (ProcessesExpr::Multi(_), ProcessesMatchersExpr::Single(_)) =
-                            (&processes, &matcher_exprs)
+                            (&processes, &processes_matchers)
                         {
                             v.in_field("expect", |v| {
                                 v.add_violation(
@@ -134,7 +152,8 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             processes,
-                            matchers: matcher_exprs,
+                            processes_matchers,
+                            files_matchers,
                         }
                     })
                 })
@@ -699,7 +718,7 @@ tests:
                     ..Default::default()
                 },
             }),
-            matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {
+            processes_matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {
                 "process1" => ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
                     ..Default::default()
@@ -719,7 +738,7 @@ tests:
       expect:
         status:
           success: true", vec![TestCaseExprTemplate {
-            matchers: ProcessesMatchersExprTemplate::Single(
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
                     ..Default::default()
@@ -735,7 +754,7 @@ tests:
       expect:
         stdout:
           be_empty: true", vec![TestCaseExprTemplate {
-            matchers: ProcessesMatchersExprTemplate::Single(
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
                     ..Default::default()
@@ -751,12 +770,29 @@ tests:
       expect:
         stderr:
           be_empty: true", vec![TestCaseExprTemplate {
-            matchers: ProcessesMatchersExprTemplate::Single(
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
                     ..Default::default()
                 }
             ),
+            ..Default::default()
+        }])]
+        #[case("with files matcher", "
+tests:
+    - command:
+        - echo
+        - hello
+      expect:
+        files:
+          hello.txt:
+            be_empty: true", vec![TestCaseExprTemplate {
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
+                ProcessMatchersExprTemplate {
+                    ..Default::default()
+                }
+            ),
+            files_matchers: indexmap!{ "hello.txt" => indexmap!{ "be_empty" => literal_expr(true)} },
             ..Default::default()
         }])]
         fn success_case(
@@ -809,6 +845,9 @@ tests:
         #[case("when test stdout matcher contains not string key", "tests: [{command: [echo], expect: {stdout: {true: 42}}}]", vec![("$.tests[0].expect.stdout", "should be string keyed map, but contains Bool(true)")])]
         #[case("when test stderr matcher is not map", "tests: [{command: [echo], expect: {stderr: 42}}]", vec![("$.tests[0].expect.stderr", "should be map, but is uint")])]
         #[case("when test stderr matcher contains not string key", "tests: [{command: [echo], expect: {stderr: {true: 42}}}]", vec![("$.tests[0].expect.stderr", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when test files matcher is not map", "tests: [{command: [echo], expect: {files: 42}}]", vec![("$.tests[0].expect.files", "should be map, but is uint")])]
+        #[case("when test file matcher is not map", "tests: [{command: [echo], expect: {files: {hello: 42}}}]", vec![("$.tests[0].expect.files.hello", "should be map, but is uint")])]
+        #[case("when test file matcher contains not string key", "tests: [{command: [echo], expect: {files: {hello: {true: 42}}}}]", vec![("$.tests[0].expect.files.hello", "should be string keyed map, but contains Bool(true)")])]
         #[case("when $tmp_file is not map", "tests: [{command: [cat, {$tmp_file: 42}]}]", vec![("$.tests[0].command[1].$tmp_file", "should be map, but is uint")])]
         #[case("when $tmp_file dosen't have filename", "tests: [{command: [cat, {$tmp_file: {contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .filename as string")])]
         #[case("when $tmp_file has filename as not string", "tests: [{command: [cat, {$tmp_file: {filename: 42, contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file.filename", "should be string, but is uint")])]
