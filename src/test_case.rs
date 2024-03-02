@@ -67,6 +67,7 @@ pub struct TestCase {
     pub filename: String,
     pub path: String,
     pub processes: IndexMap<String, Process>,
+    pub files_matchers: IndexMap<String, Vec<Box<dyn Matcher<Vec<u8>>>>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
 }
@@ -389,6 +390,7 @@ pub mod testutil {
         pub filename: &'static str,
         pub path: &'static str,
         pub processes: IndexMap<&'static str, ProcessTemplate>,
+        pub files_matchers: IndexMap<&'static str, Vec<Box<dyn Matcher<Vec<u8>>>>>,
         pub setup_hooks: Vec<Box<dyn SetupHook>>,
         pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
     }
@@ -404,6 +406,11 @@ pub mod testutil {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.build()))
                     .collect(),
+                files_matchers: self
+                    .files_matchers
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
                 setup_hooks: self.setup_hooks,
                 teardown_hooks: self.teardown_hooks,
             }
@@ -417,6 +424,7 @@ pub mod testutil {
                 filename: DEFAULT_FILENAME,
                 path: DEFAULT_PATH,
                 processes: indexmap! { "main" => ProcessTemplate::default() },
+                files_matchers: indexmap! {},
                 setup_hooks: vec![],
                 teardown_hooks: vec![],
             }

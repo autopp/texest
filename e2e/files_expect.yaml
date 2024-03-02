@@ -1,0 +1,73 @@
+tests:
+  - name: 'file eq matcher with matched output'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - name: 'file eq'
+            command:
+              - bash
+              - '-c'
+              - echo hello world > /tmp/output.txt
+            expect:
+              files:
+                /tmp/output.txt:
+                  eq: "hello world\n"
+    expect:
+      status:
+        eq: 0
+  - name: 'file eq matcher with wrong output'
+    command:
+      - $env: TEXEST
+      - '-'
+      - --format
+      - json
+    stdin:
+      $yaml:
+        tests:
+          - name: 'not equal'
+            command:
+              - bash
+              - '-c'
+              - echo hello world > /tmp/output.txt
+            expect:
+              files:
+                /tmp/output.txt:
+                  eq: "goodbye world\n"
+          - name: 'not exist'
+            command:
+              - rm
+              - -fR
+              - /tmp/output.txt
+            expect:
+              files:
+                /tmp/output.txt:
+                  eq: "goodbye world\n"
+    expect:
+      status:
+        eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 2
+            num_passed_test_cases: 0
+            num_failed_test_cases: 2
+            success: false
+            test_results:
+              - name: 'not equal'
+                passed: false
+                failures:
+                  - subject: files:/tmp/output.txt
+                    messages:
+                      - |
+                        not equals:
+
+                        -goodbye world
+                        +hello world
+              - name: 'not exist'
+                passed: false
+                failures:
+                  - subject: files:/tmp/output.txt
+                    messages: file /tmp/output.txt is not exist

@@ -134,7 +134,8 @@ pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprF
                             filename: v.filename.clone(),
                             path: v.current_path(),
                             processes,
-                            matchers: matcher_exprs,
+                            processes_matchers: matcher_exprs,
+                            files_matcher_exprs: indexmap! {},
                         }
                     })
                 })
@@ -699,7 +700,7 @@ tests:
                     ..Default::default()
                 },
             }),
-            matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {
+            processes_matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {
                 "process1" => ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
                     ..Default::default()
@@ -719,7 +720,7 @@ tests:
       expect:
         status:
           success: true", vec![TestCaseExprTemplate {
-            matchers: ProcessesMatchersExprTemplate::Single(
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
                     ..Default::default()
@@ -735,7 +736,7 @@ tests:
       expect:
         stdout:
           be_empty: true", vec![TestCaseExprTemplate {
-            matchers: ProcessesMatchersExprTemplate::Single(
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
                     ..Default::default()
@@ -751,7 +752,7 @@ tests:
       expect:
         stderr:
           be_empty: true", vec![TestCaseExprTemplate {
-            matchers: ProcessesMatchersExprTemplate::Single(
+            processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
                     ..Default::default()
