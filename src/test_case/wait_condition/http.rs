@@ -17,16 +17,26 @@ impl HttpCondition {
         tokio::time::sleep(self.initial_delay).await;
 
         let client = Client::builder().timeout(self.timeout).build().unwrap();
-        for _ in 0..self.max_retry {
-            let url = format!("http://localhost:{}{}", self.port, self.path);
-            let result = client.get(&url).send().await;
+        let url = format!("http://localhost:{}{}", self.port, self.path);
 
-            if let Ok(response) = result {
-                if response.status().is_success() {
-                    return Ok(());
-                }
-            }
+        let check = || async {
+            client
+                .get(&url)
+                .send()
+                .await
+                .is_ok_and(|r| r.status().is_success())
+        };
+
+        if check().await {
+            return Ok(());
+        }
+
+        for _ in 0..self.max_retry {
             tokio::time::sleep(self.interval).await;
+
+            if check().await {
+                return Ok(());
+            }
         }
 
         Err(format!("HTTP endpoint {} is not ready", self.path))
@@ -58,8 +68,17 @@ mod tests {
             #[case(cycle![
                 status_code(500),
                 status_code(500),
+                status_code(500),
                 status_code(200),
                 ], Ok(()))]
+            #[tokio::test]
+            #[case(cycle![
+                status_code(500),
+                status_code(500),
+                status_code(500),
+                status_code(500),
+                status_code(200),
+                ], Err("HTTP endpoint /health is not ready".to_string()))]
             #[tokio::test]
             #[case(delay_and_then(Duration::from_secs(1), status_code(200)), Err("HTTP endpoint /health is not ready".to_string()))]
             async fn success_cases<R: Responder + 'static>(
