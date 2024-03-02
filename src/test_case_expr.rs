@@ -52,7 +52,7 @@ pub struct TestCaseExpr {
     pub path: String,
     pub processes: ProcessesExpr,
     pub processes_matchers: ProcessesMatchersExpr,
-    pub files_matcher_exprs: IndexMap<String, IndexMap<String, Expr>>,
+    pub files_matchers: IndexMap<String, IndexMap<String, Expr>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -167,7 +167,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
 
     let files_matchers = v.in_field("expect.files", |v| {
         test_case_expr
-            .files_matcher_exprs
+            .files_matchers
             .iter()
             .map(|(path, matcher_exprs)| {
                 (
@@ -491,7 +491,7 @@ pub mod testutil {
                 path: self.path.to_string(),
                 processes: self.processes.build(),
                 processes_matchers: self.processes_matchers.build(),
-                files_matcher_exprs: self
+                files_matchers: self
                     .files_matchers
                     .into_iter()
                     .map(|(k, v)| {

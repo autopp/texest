@@ -59,7 +59,7 @@ tests:
               - name: 'not equal'
                 passed: false
                 failures:
-                  - subject: files:/tmp/output.txt
+                  - subject: file:/tmp/output.txt
                     messages:
                       - |
                         not equals:
@@ -69,5 +69,5 @@ tests:
               - name: 'not exist'
                 passed: false
                 failures:
-                  - subject: files:/tmp/output.txt
-                    messages: file /tmp/output.txt is not exist
+                  - subject: file:/tmp/output.txt
+                    messages: [dose not exist]
