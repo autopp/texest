@@ -3,7 +3,7 @@ mod sleep;
 
 use std::time::Duration;
 
-use self::http::HttpCondition;
+pub use self::http::HttpCondition;
 pub use self::sleep::SleepCondition;
 
 #[derive(Debug, Clone, PartialEq)]

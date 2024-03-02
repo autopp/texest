@@ -9,7 +9,10 @@ use serde_yaml::Value;
 use crate::{
     ast::Map,
     expr::Expr,
-    test_case::{wait_condition::SleepCondition, BackgroundConfig, ProcessMode, WaitCondition},
+    test_case::{
+        wait_condition::{HttpCondition, SleepCondition},
+        BackgroundConfig, ProcessMode, WaitCondition,
+    },
     test_case_expr::{
         ProcessExpr, ProcessMatchersExpr, ProcessesExpr, ProcessesMatchersExpr, TestCaseExpr,
         TestCaseExprFile,
@@ -207,6 +210,39 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
                                     .unwrap_or(Duration::from_secs(0));
                                 Some(WaitCondition::Sleep(SleepCondition { duration }))
                             }
+                            "http" => {
+                                let port = v
+                                    .must_have_uint(wait_for, "port")
+                                    .and_then(|port64| {
+                                        v.in_field("port", |v| {
+                                            TryFrom::try_from(port64)
+                                                .map_err(|_| {
+                                                    v.add_violation("should be in range of u16");
+                                                })
+                                                .ok()
+                                        })
+                                    })
+                                    .unwrap_or_default();
+                                let path = v.must_have_string(wait_for, "path").unwrap_or_default();
+                                let initial_delay = v
+                                    .may_have_duration(wait_for, "initial_delay")
+                                    .unwrap_or(Duration::from_secs(0));
+                                let interval = v
+                                    .may_have_duration(wait_for, "interval")
+                                    .unwrap_or(Duration::from_secs(0));
+                                let max_retry = v.may_have_uint(wait_for, "max_retry").unwrap_or(3);
+                                let timeout = v
+                                    .may_have_duration(wait_for, "timeout")
+                                    .unwrap_or(Duration::from_secs(1));
+                                Some(WaitCondition::Http(HttpCondition {
+                                    port,
+                                    path,
+                                    initial_delay,
+                                    interval,
+                                    max_retry,
+                                    timeout,
+                                }))
+                            }
                             _ => {
                                 v.in_field("type", |v| {
                                     v.add_violation(format!(
@@ -299,7 +335,7 @@ mod tests {
                 testutil::{env_var_expr, literal_expr},
                 Expr,
             },
-            test_case::BackgroundConfig,
+            test_case::{wait_condition::HttpCondition, BackgroundConfig},
             test_case_expr::testutil::{
                 ProcessExprTemplate, ProcessMatchersExprTemplate, ProcessesExprTemplate,
                 ProcessesMatchersExprTemplate, TestCaseExprTemplate,
@@ -537,7 +573,7 @@ tests:
             }),
             ..Default::default()
         }])]
-        #[case("with background processes", "
+        #[case("with background processes waiting by sleep", "
 tests:
     - processes:
         main:
@@ -557,6 +593,70 @@ tests:
                     ],
                     mode: ProcessMode::Background(BackgroundConfig {
                         wait_condition: WaitCondition::Sleep(SleepCondition { duration: Duration::from_millis(100) }),
+                    }),
+                    ..Default::default()
+                },
+            }),
+            ..Default::default()
+        }])]
+        #[case("with background processes waiting by http", "
+tests:
+    - processes:
+        main:
+            command:
+                - echo
+                - hello
+            background:
+                wait_for:
+                    type: http
+                    port: 8080
+                    path: /health
+                    max_retry: 10
+                    initial_delay: 1s
+                    interval: 100ms
+                    timeout: 3s
+    ", vec![TestCaseExprTemplate {
+            processes: ProcessesExprTemplate::Multi(indexmap! {
+                "main" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("hello"),
+                    ],
+                    mode: ProcessMode::Background(BackgroundConfig {
+                        wait_condition: WaitCondition::Http(HttpCondition {
+                            port: 8080, path: "/health".to_string(), initial_delay: Duration::from_secs(1),
+                            interval: Duration::from_millis(100), max_retry: 10, timeout: Duration::from_secs(3)
+                        }),
+                    }),
+                    ..Default::default()
+                },
+            }),
+            ..Default::default()
+        }])]
+        #[case("with background processes waiting by http (default parameters)", "
+tests:
+    - processes:
+        main:
+            command:
+                - echo
+                - hello
+            background:
+                wait_for:
+                    type: http
+                    port: 8080
+                    path: /health
+    ", vec![TestCaseExprTemplate {
+            processes: ProcessesExprTemplate::Multi(indexmap! {
+                "main" => ProcessExprTemplate {
+                    command: vec![
+                        literal_expr("echo"),
+                        literal_expr("hello"),
+                    ],
+                    mode: ProcessMode::Background(BackgroundConfig {
+                        wait_condition: WaitCondition::Http(HttpCondition {
+                            port: 8080, path: "/health".to_string(), initial_delay: Duration::from_secs(0),
+                            interval: Duration::from_secs(0), max_retry: 3, timeout: Duration::from_secs(1)
+                        }),
                     }),
                     ..Default::default()
                 },
@@ -691,6 +791,8 @@ tests:
         #[case("when wait condition type is not string", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: 42 } } } }]", vec![("$.tests[0].processes.main.background.wait_for.type", "should be string, but is uint")])]
         #[case("when wait condition type is not defined", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: unknown } } } }]", vec![("$.tests[0].processes.main.background.wait_for.type", "\"unknown\" is not valid wait condition type")])]
         #[case("when sleep wait condition dose not have duration", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: sleep, duration: true } } } }]", vec![("$.tests[0].processes.main.background.wait_for.duration", "should be duration, but is bool")])]
+        #[case("when http wait condition dose not have required parameters", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: http } } } }]", vec![("$.tests[0].processes.main.background.wait_for", "should have port as uint"), ("$.tests[0].processes.main.background.wait_for", "should have path as string")])]
+        #[case("when http wait condition dose not have invalid parameter", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: http, port: 100000, path: true, initial_delay: true, interval: true, max_retry: -1, timeout: true } } } }]", vec![("$.tests[0].processes.main.background.wait_for.port", "should be in range of u16"), ("$.tests[0].processes.main.background.wait_for.path", "should be string, but is bool"), ("$.tests[0].processes.main.background.wait_for.initial_delay", "should be duration, but is bool"), ("$.tests[0].processes.main.background.wait_for.interval", "should be duration, but is bool"), ("$.tests[0].processes.main.background.wait_for.max_retry", "should be uint, but is int"), ("$.tests[0].processes.main.background.wait_for.timeout", "should be duration, but is bool")])]
         #[case("when some process is not map", "tests: [processes: {proc1: true}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
         #[case("when some process's command is empty", "tests: [processes: {proc1: {command: []}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
         #[case("when backgroud is not map", "tests: [processes: {proc1: {command: [true], background: true}}]", vec![("$.tests[0].processes.proc1.background", "should be map, but is bool")])]

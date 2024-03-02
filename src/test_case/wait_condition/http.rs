@@ -8,7 +8,7 @@ pub struct HttpCondition {
     pub path: String,
     pub initial_delay: Duration,
     pub interval: Duration,
-    pub max_retry: u32,
+    pub max_retry: u64,
     pub timeout: Duration,
 }
 
