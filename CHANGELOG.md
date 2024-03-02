@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v0.4.0
+
+- Add expectation of file
+- Support waiting background process by condition (`sleep` or `http`)
+- Add duration notation
+- Add multiple process mode in a test case
+- Add `$tmp_file` expr notation
+- Improve message of timeout
+
 ## v0.3.0
 
 - Reduce memory copy about of `String`
