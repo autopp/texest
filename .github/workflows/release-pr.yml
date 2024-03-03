@@ -22,7 +22,7 @@ jobs:
         run: |
           VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')
           TAG="v${VERSION}"
-          if [[ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${VERSION}\" and .draft == true)") = true ]]; then
+          if [[ $(gh api /repos/autopp/texest/releases | jq "any(.name == \"${TAG}\" and .draft == true)") = true ]]; then
             echo Delete existing release
             gh release delete "${TAG}"
           fi
@@ -50,6 +50,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - run: sudo apt install -y musl-tools musl-dev
+        if: matrix.target == 'x86_64-unknown-linux-musl'
       - name: Attach Artifacts
         run: |
           VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')
