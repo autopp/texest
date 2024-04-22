@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v0.5.0
+
+- Add stream matcher `include_json`
+
 ## v0.4.0
 
 - Add expectation of file
