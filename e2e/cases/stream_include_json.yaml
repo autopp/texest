@@ -1,0 +1,73 @@
+tests:
+  - name: 'stream include_json matcher with matched output'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - $json:
+                  message: hello
+                  nums: [1, 2, 3]
+                  passed: true
+            expect:
+              stdout:
+                include_json:
+                  $json:
+                    message: "hello"
+                    nums: [1, 2]
+    expect:
+      status:
+        eq: 0
+  - name: 'stream include_json matcher with wrong output'
+    command:
+      - $env: TEXEST
+      - '-'
+      - --format
+      - json
+    stdin:
+      $yaml:
+        tests:
+          - name: "include_json with wrong output"
+            command:
+              - echo
+              - $json:
+                  message: world
+                  nums: [1, 0, 3]
+                  passed: true
+            expect:
+              stdout:
+                include_json:
+                  $json:
+                    message: "hello"
+                    nums: [1, 2]
+    expect:
+      status:
+        eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 1
+            num_passed_test_cases: 0
+            num_failed_test_cases: 1
+            success: false
+            test_results:
+              - name: "include_json with wrong output"
+                passed: false
+                failures:
+                  - subject: main:stdout
+                    messages:
+                      - |-
+                        json atoms at path ".message" are not equal:
+                            expected:
+                                "hello"
+                            actual:
+                                "world"
+
+                        json atoms at path ".nums[1]" are not equal:
+                            expected:
+                                2
+                            actual:
+                                0
