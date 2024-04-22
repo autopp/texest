@@ -52,6 +52,7 @@ pub fn new_stream_matcher_registry() -> StreamMatcherRegistry {
     r.register("eq", stream::parse_eq_matcher);
     r.register("contain", stream::parse_contain_matcher);
     r.register("eq_json", stream::parse_eq_json_matcher);
+    r.register("include_json", stream::parse_include_json_matcher);
     r
 }
 
