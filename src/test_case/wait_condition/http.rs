@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use reqwest::Client;
 
+use crate::{ast::Map, validator::Validator};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HttpCondition {
     pub port: u16,
@@ -41,6 +43,46 @@ impl HttpCondition {
 
         Err(format!("HTTP endpoint {} is not ready", self.path))
     }
+
+    pub fn parse(v: &mut Validator, params: &Map) -> Option<Self> {
+        let prev_vioaions_count = v.violations.len();
+        let port: u16 = v
+            .must_have_uint(params, "port")
+            .and_then(|port64| {
+                v.in_field("port", |v| {
+                    TryFrom::try_from(port64)
+                        .map_err(|_| {
+                            v.add_violation("should be in range of u16");
+                        })
+                        .ok()
+                })
+            })
+            .unwrap_or_default();
+        let path = v.must_have_string(params, "path").unwrap_or_default();
+        let initial_delay = v
+            .may_have_duration(params, "initial_delay")
+            .unwrap_or(Duration::from_secs(0));
+        let interval = v
+            .may_have_duration(params, "interval")
+            .unwrap_or(Duration::from_secs(0));
+        let max_retry = v.may_have_uint(params, "max_retry").unwrap_or(3);
+        let timeout = v
+            .may_have_duration(params, "timeout")
+            .unwrap_or(Duration::from_secs(1));
+
+        if prev_vioaions_count == v.violations.len() {
+            Some(HttpCondition {
+                port,
+                path,
+                initial_delay,
+                interval,
+                max_retry,
+                timeout,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -48,6 +90,13 @@ mod tests {
     use super::*;
 
     mod http_condition {
+        use indexmap::{indexmap, IndexMap};
+        use pretty_assertions::assert_eq;
+        use rstest::rstest;
+        use serde_yaml::Value;
+
+        use crate::validator::testutil;
+
         use super::*;
 
         mod wait {
@@ -55,6 +104,7 @@ mod tests {
             use rstest::*;
 
             use super::*;
+            use pretty_assertions::assert_eq;
 
             static SERVER_POOL: ServerPool = ServerPool::new(10);
             const PATH: &str = "/health";
@@ -103,6 +153,81 @@ mod tests {
 
                 assert_eq!(expected, condition.wait().await);
             }
+        }
+
+        #[rstest]
+        #[case("with full valid params", indexmap! {
+            "port" => Value::from(8080),
+            "path" => Value::from("/health"),
+            "initial_delay" => Value::from("2s"),
+            "interval" => Value::from("3s"),
+            "max_retry" => Value::from(5),
+            "timeout" => Value::from("20s"),
+        }, Some(HttpCondition {
+            port: 8080,
+            path: "/health".to_string(),
+            initial_delay: Duration::from_secs(2),
+            interval: Duration::from_secs(3),
+            max_retry: 5,
+            timeout: Duration::from_secs(20),
+        }), vec![])]
+        #[case("with minimum valid params", indexmap! {
+            "port" => Value::from(8080),
+            "path" => Value::from("/health"),
+        }, Some(HttpCondition {
+            port: 8080,
+            path: "/health".to_string(),
+            initial_delay: Duration::from_secs(0),
+            interval: Duration::from_secs(0),
+            max_retry: 3,
+            timeout: Duration::from_secs(1),
+        }), vec![])]
+        #[case("with missing reqired params", indexmap! {}, None, vec![("", "should have .port as uint"), ("", "should have .path as string")])]
+        #[case("with invalid params", indexmap! {
+            "port" => Value::from(65536),
+            "path" => Value::from(true),
+            "initial_delay" => Value::from(true),
+            "interval" => Value::from(true),
+            "max_retry" => Value::from(true),
+            "timeout" => Value::from(true),
+        }, None, vec![
+            (".port", "should be in range of u16"),
+            (".path", "should be string, but is bool"),
+            (".initial_delay", "should be duration, but is bool"),
+            (".interval", "should be duration, but is bool"),
+            (".max_retry", "should be uint, but is bool"),
+            (".timeout", "should be duration, but is bool"),
+        ])]
+        fn parse(
+            #[case] title: &str,
+            #[case] params: IndexMap<&str, Value>,
+            #[case] expected_value: Option<HttpCondition>,
+            #[case] expected_violation: Vec<(&str, &str)>,
+        ) {
+            let (mut v, violation) = testutil::new_validator();
+
+            assert_eq!(
+                expected_value,
+                HttpCondition::parse(
+                    &mut v,
+                    &params
+                        .iter()
+                        .map(|(k, v)| (*k, v))
+                        .collect::<IndexMap<_, _>>()
+                ),
+                "{}",
+                title
+            );
+
+            assert_eq!(
+                expected_violation
+                    .into_iter()
+                    .map(|(path, msg)| violation(path, msg))
+                    .collect::<Vec<_>>(),
+                v.violations,
+                "{}",
+                title
+            );
         }
     }
 }
