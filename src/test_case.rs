@@ -73,6 +73,8 @@ pub struct TestCase {
 }
 
 pub struct TestCaseFile<'a> {
+    // TODO: remove allow (and use in report?)
+    #[allow(dead_code)]
     pub filename: String,
     pub test_cases: Vec<&'a TestCase>,
 }
