@@ -1,11 +1,12 @@
 use std::time::Duration;
 
 use indexmap::{indexmap, IndexMap};
+use serde_yaml::Value;
 
 use crate::{
     expr::{Context, EvalOutput, Expr},
     matcher::{Matcher, MatcherRegistry, StatusMatcherRegistry, StreamMatcherRegistry},
-    test_case::{Process, ProcessMode, SetupHook, TestCase},
+    test_case::{BackgroundConfig, Process, ProcessMode, SetupHook, TestCase, WaitCondition},
     tmp_dir::TmpDirSupplier,
     validator::{Validator, Violation},
 };
@@ -15,13 +16,30 @@ pub struct TestExprError {
     pub violations: Vec<Violation>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct BackgroundConfigExpr {
+    pub wait_condition: Option<WaitConditionExpr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct WaitConditionExpr {
+    pub name: String,
+    pub params: IndexMap<String, Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ProcessModeExpr {
+    Foreground,
+    Background(BackgroundConfigExpr),
+}
+
 #[derive(Debug, PartialEq)]
 pub struct ProcessExpr {
     pub command: Vec<Expr>,
     pub stdin: Expr,
     pub env: Vec<(String, Expr)>,
     pub timeout: Duration,
-    pub mode: ProcessMode,
+    pub mode: ProcessModeExpr,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
 }
@@ -315,6 +333,50 @@ fn eval_process_expr<T: TmpDirSupplier>(
             .collect()
     });
 
+    let mode = match &process_expr.mode {
+        ProcessModeExpr::Foreground => ProcessMode::Foreground,
+        ProcessModeExpr::Background(BackgroundConfigExpr { wait_condition }) => {
+            v.in_field("background", |v| {
+                v.in_field("wait_for", |v| {
+                    wait_condition
+                        .as_ref()
+                        .and_then(|wait_condition| {
+                            let params: Option<IndexMap<&String, Value>> = wait_condition
+                                .params
+                                .iter()
+                                .map(|(k, expr)| match ctx.eval_expr(expr) {
+                                    Ok(EvalOutput { value, setup_hook }) => {
+                                        if let Some(hook) = setup_hook {
+                                            setup_hooks.push(hook)
+                                        }
+                                        Some((k, value))
+                                    }
+                                    Err(message) => {
+                                        v.in_field(k, |v| {
+                                            v.add_violation(format!("eval error: {}", message))
+                                        });
+                                        None
+                                    }
+                                })
+                                .collect();
+
+                            params.and_then(|params| {
+                                WaitCondition::parse(
+                                    v,
+                                    &wait_condition.name,
+                                    &params.iter().map(|(k, v)| (k.as_str(), v)).collect(),
+                                )
+                                .map(|wait_condition| {
+                                    ProcessMode::Background(BackgroundConfig { wait_condition })
+                                })
+                            })
+                        })
+                        .unwrap_or(ProcessMode::Background(BackgroundConfig::default()))
+                })
+            })
+        }
+    };
+
     Process {
         command,
         stdin,
@@ -323,7 +385,7 @@ fn eval_process_expr<T: TmpDirSupplier>(
         stdout_matchers,
         stderr_matchers,
         timeout: process_expr.timeout,
-        mode: process_expr.mode.clone(),
+        mode,
         tee_stdout: process_expr.tee_stdout,
         tee_stderr: process_expr.tee_stderr,
     }
@@ -339,10 +401,10 @@ pub mod testutil {
     use crate::expr::Expr;
 
     use crate::expr::testutil::*;
-    use crate::test_case::ProcessMode;
 
     use super::ProcessExpr;
     use super::ProcessMatchersExpr;
+    use super::ProcessModeExpr;
     use super::ProcessesExpr;
     use super::ProcessesMatchersExpr;
     use super::TestCaseExpr;
@@ -352,7 +414,7 @@ pub mod testutil {
         pub stdin: Expr,
         pub env: Vec<(&'static str, Expr)>,
         pub timeout: u64,
-        pub mode: ProcessMode,
+        pub mode: ProcessModeExpr,
         pub tee_stdout: bool,
         pub tee_stderr: bool,
     }
@@ -382,7 +444,7 @@ pub mod testutil {
                 stdin: literal_expr(""),
                 env: vec![],
                 timeout: 10,
-                mode: ProcessMode::Foreground,
+                mode: ProcessModeExpr::Foreground,
                 tee_stdout: false,
                 tee_stderr: false,
             }
@@ -532,6 +594,7 @@ mod tests {
                 new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
                 VIOLATION_MESSAGE,
             },
+            test_case::{BackgroundConfig, ProcessMode},
             test_case_expr::testutil::{
                 ProcessExprTemplate, ProcessMatchersExprTemplate, ProcessesExprTemplate,
                 ProcessesMatchersExprTemplate, TestCaseExprTemplate,
@@ -604,6 +667,61 @@ mod tests {
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
                 },
+            ]
+        )]
+        #[case("wuth multi processes case",
+            TestCaseExprTemplate {
+                processes: ProcessesExprTemplate::Multi(indexmap! {
+                    "process1" => ProcessExprTemplate {
+                        mode: ProcessModeExpr::Background(BackgroundConfigExpr {
+                            wait_condition: Some(WaitConditionExpr {
+                                name: "success_stub".to_string(),
+                                params: indexmap! { "answer".to_string() => literal_expr(42) }
+                            }),
+                        }),
+                        ..Default::default()
+                    },
+                    "process2" => ProcessExprTemplate::default(),
+                }),
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    name: TestCaseExprTemplate::NAME_FOR_DEFAULT_COMMAND.to_string(),
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    processes: indexmap! {
+                        "process1".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Background(BackgroundConfig {
+                                wait_condition: WaitCondition::SuccessStub(indexmap! { "answer".to_string() => Value::from(42) }),
+                            }),
+                            tee_stdout: false,
+                            tee_stderr: false,
+                            status_matchers: vec![],
+                            stdout_matchers: vec![],
+                            stderr_matchers: vec![],
+                        },
+                        "process2".to_string() => Process {
+                            command: vec!["echo".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
+                            timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
+                            tee_stdout: false,
+                            tee_stderr: false,
+                            status_matchers: vec![],
+                            stdout_matchers: vec![],
+                            stderr_matchers: vec![],
+                        }
+                    },
+                    files_matchers: indexmap! {},
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
+                }
             ]
         )]
         #[case("with stdin case",
@@ -955,6 +1073,42 @@ mod tests {
             vec![
                 violation(".env.MESSAGE1", "should be string, but is bool"),
                 violation(".env.MESSAGE2", "eval error: env var _undefined is not defined"),
+            ]
+        )]
+        #[case("with eval error in background.wait_for",
+            TestCaseExprTemplate {
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    mode: ProcessModeExpr::Background(BackgroundConfigExpr {
+                        wait_condition: Some(WaitConditionExpr{
+                            name: "success_stub".to_string(),
+                            params: indexmap!{
+                                "x".to_string() => env_var_expr("_undefined"),
+                            },
+                        })
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            vec![
+                violation(".background.wait_for.x", "eval error: env var _undefined is not defined"),
+            ]
+        )]
+        #[case("with invalid wait condition",
+            TestCaseExprTemplate {
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    mode: ProcessModeExpr::Background(BackgroundConfigExpr {
+                        wait_condition: Some(WaitConditionExpr{
+                            name: "unknown".to_string(),
+                            params: indexmap!{},
+                        })
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            vec![
+                violation(".background.wait_for.type", "\"unknown\" is not valid wait condition type"),
             ]
         )]
         #[case("with not string stdin",

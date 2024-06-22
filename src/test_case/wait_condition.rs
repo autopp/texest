@@ -13,6 +13,8 @@ pub use self::sleep::SleepCondition;
 pub enum WaitCondition {
     Sleep(SleepCondition),
     Http(HttpCondition),
+    #[cfg(test)]
+    SuccessStub(indexmap::IndexMap<String, serde_yaml::Value>),
 }
 
 impl WaitCondition {
@@ -20,6 +22,8 @@ impl WaitCondition {
         match self {
             WaitCondition::Sleep(sleep_condition) => sleep_condition.wait().await,
             WaitCondition::Http(http_condition) => http_condition.wait().await,
+            #[cfg(test)]
+            WaitCondition::SuccessStub(_) => Ok(()),
         }
     }
 
@@ -27,6 +31,13 @@ impl WaitCondition {
         match name {
             "sleep" => SleepCondition::parse(v, params).map(WaitCondition::Sleep),
             "http" => HttpCondition::parse(v, params).map(WaitCondition::Http),
+            #[cfg(test)]
+            "success_stub" => Some(WaitCondition::SuccessStub(
+                params
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), (*v).clone()))
+                    .collect(),
+            )),
             _ => {
                 v.in_field("type", |v| {
                     v.add_violation(format!("\"{}\" is not valid wait condition type", name))
