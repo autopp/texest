@@ -1,17 +1,15 @@
 use assert_json_diff::{assert_json_matches_no_panic, Config};
 
-use crate::{matcher::MatcherOld, validator::Validator};
-
-use super::STREAM_MATCHER_TAG;
+use crate::validator::Validator;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EqJsonMatcher {
-    expected: serde_json::Value,
-    original: String,
+    pub(super) expected: serde_json::Value,
+    pub(super) original: String,
 }
 
-impl MatcherOld<Vec<u8>> for EqJsonMatcher {
-    fn matches_old(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+impl EqJsonMatcher {
+    pub fn matches(&self, actual: &[u8]) -> Result<(bool, String), String> {
         let actual_str = String::from_utf8(actual.to_vec()).map_err(|_err| {
             format!(
                 "should be valid JSON string, but got \"{}\"",
@@ -43,34 +41,19 @@ impl MatcherOld<Vec<u8>> for EqJsonMatcher {
         }
     }
 
-    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
-        (
-            STREAM_MATCHER_TAG,
-            "eq_json",
-            serde_yaml::to_value(&self.expected).unwrap(),
-        )
+    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+        v.must_be_string(x)
+            .and_then(|original| match serde_json::from_str(&original) {
+                Ok(expected) => Some(Self { expected, original }),
+                _ => {
+                    v.add_violation(format!(
+                        "should be valid JSON string, but got \"{}\"",
+                        original
+                    ));
+                    None
+                }
+            })
     }
-}
-
-pub fn parse_eq_json_matcher(
-    v: &mut Validator,
-    x: &serde_yaml::Value,
-) -> Option<Box<dyn MatcherOld<Vec<u8>>>> {
-    v.must_be_string(x)
-        .and_then(|original| match serde_json::from_str(&original) {
-            Ok(expected) => {
-                let b: Box<dyn MatcherOld<Vec<u8>>> =
-                    Box::new(EqJsonMatcher { expected, original });
-                Some(b)
-            }
-            _ => {
-                v.add_violation(format!(
-                    "should be valid JSON string, but got \"{}\"",
-                    original
-                ));
-                None
-            }
-        })
 }
 
 #[cfg(test)]
@@ -121,7 +104,7 @@ mod tests {
         };
         assert_eq!(
             Ok((expected_matched, expected_message.to_string())),
-            m.matches_old(&given.as_bytes().to_vec()),
+            m.matches(given.as_bytes()),
         );
     }
 
@@ -137,18 +120,18 @@ mod tests {
             let (mut v, _) = new_validator();
             let original = r#"{"message": "hello"}"#;
             let x = serde_yaml::to_value(original).unwrap();
-            let actual = parse_eq_json_matcher(&mut v, &x).unwrap();
+            let actual = EqJsonMatcher::parse(&mut v, &x).unwrap();
 
             let mut m = serde_json::Map::new();
             m.insert(
                 "message".to_string(),
                 serde_json::Value::String("hello".to_string()),
             );
-            let expected: Box<dyn MatcherOld<Vec<u8>>> = Box::new(EqJsonMatcher {
+            let expected = EqJsonMatcher {
                 original: original.into(),
                 expected: serde_json::Value::Object(m),
-            });
-            assert_eq!(&expected, &actual);
+            };
+            assert_eq!(expected, actual);
         }
 
         #[rstest]
@@ -164,7 +147,7 @@ mod tests {
             #[case] expected_message: &str,
         ) {
             let (mut v, violation) = new_validator();
-            let actual = parse_eq_json_matcher(&mut v, &given);
+            let actual = EqJsonMatcher::parse(&mut v, &given);
 
             assert!(actual.is_none(), "{}", title);
             assert_eq!(

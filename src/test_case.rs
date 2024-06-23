@@ -7,7 +7,7 @@ use indexmap::{indexmap, IndexMap};
 
 use crate::{
     exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
-    matcher::{MatcherOld, StatusMatcher},
+    matcher::{StatusMatcher, StreamMatcher},
 };
 
 pub use self::wait_condition::WaitCondition;
@@ -57,8 +57,8 @@ pub struct Process {
     pub tee_stdout: bool,
     pub tee_stderr: bool,
     pub status_matchers: Vec<StatusMatcher>,
-    pub stdout_matchers: Vec<Box<dyn MatcherOld<Vec<u8>>>>,
-    pub stderr_matchers: Vec<Box<dyn MatcherOld<Vec<u8>>>>,
+    pub stdout_matchers: Vec<StreamMatcher>,
+    pub stderr_matchers: Vec<StreamMatcher>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -67,7 +67,7 @@ pub struct TestCase {
     pub filename: String,
     pub path: String,
     pub processes: IndexMap<String, Process>,
-    pub files_matchers: IndexMap<String, Vec<Box<dyn MatcherOld<Vec<u8>>>>>,
+    pub files_matchers: IndexMap<String, Vec<StreamMatcher>>,
     pub setup_hooks: Vec<Box<dyn SetupHook>>,
     pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
 }
@@ -215,10 +215,10 @@ impl TestCase {
                     };
 
                     let stdout = output.stdout.as_bytes().to_vec();
-                    let stdout_messages = run_matchers_old(&process.stdout_matchers, &stdout);
+                    let stdout_messages = run_stream_matchers(&process.stdout_matchers, &stdout);
 
                     let stderr = output.stderr.as_bytes().to_vec();
-                    let stderr_messages = run_matchers_old(&process.stderr_matchers, &stderr);
+                    let stderr_messages = run_stream_matchers(&process.stderr_matchers, &stderr);
 
                     if !status_messages.is_empty() {
                         failures.insert(subject_of(process_name, "status"), status_messages);
@@ -248,7 +248,7 @@ impl TestCase {
 
                     match std::fs::read(path) {
                         Ok(content) => {
-                            let messages = run_matchers_old(matchers, &content);
+                            let messages = run_stream_matchers(matchers, &content);
                             if !messages.is_empty() {
                                 failures.insert(subject, messages);
                             }
@@ -286,18 +286,6 @@ fn subject_of<S: AsRef<str>, T: AsRef<str>>(process_name: S, subject: T) -> Stri
     format!("{}:{}", process_name.as_ref(), subject.as_ref())
 }
 
-fn run_matchers_old<T>(matchers: &[Box<dyn MatcherOld<T>>], value: &T) -> Vec<String> {
-    matchers
-        .iter()
-        .filter_map(|matcher| {
-            matcher
-                .matches_old(value)
-                .map(|(passed, message)| if passed { None } else { Some(message) })
-                .unwrap_or_else(Some)
-        })
-        .collect()
-}
-
 fn run_status_matchers(matchers: &[StatusMatcher], status: i32) -> Vec<String> {
     matchers
         .iter()
@@ -310,12 +298,24 @@ fn run_status_matchers(matchers: &[StatusMatcher], status: i32) -> Vec<String> {
         .collect()
 }
 
+fn run_stream_matchers(matchers: &[StreamMatcher], stream: &[u8]) -> Vec<String> {
+    matchers
+        .iter()
+        .filter_map(|matcher| {
+            matcher
+                .matches(stream)
+                .map(|(passed, message)| if passed { None } else { Some(message) })
+                .unwrap_or_else(Some)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 pub mod testutil {
     use indexmap::{indexmap, IndexMap};
     use serde_yaml::Value;
 
-    use crate::matcher::{MatcherOld, StatusMatcher};
+    use crate::matcher::{StatusMatcher, StreamMatcher};
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
     use super::{LifeCycleHook, Process, ProcessMode, SetupHook, TeardownHook, TestCase};
@@ -385,8 +385,8 @@ pub mod testutil {
         pub tee_stdout: bool,
         pub tee_stderr: bool,
         pub status_matchers: Vec<StatusMatcher>,
-        pub stdout_matchers: Vec<Box<dyn MatcherOld<Vec<u8>>>>,
-        pub stderr_matchers: Vec<Box<dyn MatcherOld<Vec<u8>>>>,
+        pub stdout_matchers: Vec<StreamMatcher>,
+        pub stderr_matchers: Vec<StreamMatcher>,
     }
 
     impl Default for ProcessTemplate {
@@ -427,7 +427,7 @@ pub mod testutil {
         }
     }
 
-    type FilesMatchers = IndexMap<&'static str, Vec<Box<dyn MatcherOld<Vec<u8>>>>>;
+    type FilesMatchers = IndexMap<&'static str, Vec<StreamMatcher>>;
     pub struct TestCaseTemplate {
         pub name: &'static str,
         pub filename: &'static str,
@@ -493,10 +493,11 @@ mod tests {
         mod run {
             use std::{cell::RefCell, rc::Rc};
 
-            use crate::matcher::status::testutil::{
-                new_status_test_failure, new_status_test_success,
+            use crate::matcher::testutil::new_stream_test_success;
+            use crate::matcher::testutil::{
+                new_status_test_failure, new_status_test_success, new_stream_test_failure,
+                TestMatcher,
             };
-            use crate::matcher::testutil::TestMatcherOld;
             use crate::test_case::testutil::HookType::{Setup, Teardown};
             use crate::test_case::testutil::{
                 HookHistory, ProcessTemplate, TestCaseTemplate, TestHook, DEFAULT_NAME,
@@ -519,25 +520,25 @@ mod tests {
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are failed",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![new_status_test_failure(1)], ..Default::default() } }, ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec![TestMatcherOld::failure_message(0)]} })]
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(0)]} })]
             #[case("command is exit, stdout matchers are succeeded",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stdout_matchers: vec![TestMatcherOld::new_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stdout_matchers: vec![new_stream_test_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stdout matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![TestMatcherOld::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcherOld::failure_message("hello".as_bytes())]} })]
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![TestMatcherOld::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcherOld::failure_message("hello world".as_bytes())]} })]
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello world".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, env is given",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![TestMatcherOld::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcherOld::failure_message("hello\n".as_bytes())]} })]
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello\n".as_bytes())]} })]
             #[case("command is exit, stderr matchers are succeeded",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stderr_matchers: vec![TestMatcherOld::new_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stderr_matchers: vec![new_stream_test_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stderr matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![TestMatcherOld::new_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
-                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDERR_STRING) => vec![TestMatcherOld::failure_message("hi".as_bytes())]} })]
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDERR_STRING) => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
             #[case("command is signaled",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec!["signaled with 15".to_string()]} })]
@@ -558,8 +559,8 @@ mod tests {
                                 wait_condition: WaitCondition::Sleep(SleepCondition { duration: Duration::from_millis(50) })
                             }),
                             status_matchers: vec![new_status_test_failure(true)],
-                            stdout_matchers: vec![TestMatcherOld::new_failure(Value::from(true))],
-                            stderr_matchers: vec![TestMatcherOld::new_failure(Value::from(true))],
+                            stdout_matchers: vec![new_stream_test_failure(Value::from(true))],
+                            stderr_matchers: vec![new_stream_test_failure(Value::from(true))],
                             ..Default::default()
                         },
                         "main" => ProcessTemplate {
@@ -573,10 +574,10 @@ mod tests {
                 TestResult {
                     name: DEFAULT_NAME.to_string(),
                     failures: indexmap! {
-                        format!("bg:{}", *STATUS_STRING) => vec![TestMatcherOld::failure_message(2)],
-                        format!("bg:{}", *STDOUT_STRING) => vec![TestMatcherOld::failure_message("hello\n".as_bytes())],
-                        format!("bg:{}", *STDERR_STRING) => vec![TestMatcherOld::failure_message("goodbye\n".as_bytes())],
-                        format!("main:{}", *STATUS_STRING) => vec![TestMatcherOld::failure_message(1)]
+                        format!("bg:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(2)],
+                        format!("bg:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello\n".as_bytes())],
+                        format!("bg:{}", *STDERR_STRING) => vec![TestMatcher::failure_message("goodbye\n".as_bytes())],
+                        format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(1)]
                     }
                 })]
             fn when_exec_succeeded(
@@ -592,28 +593,28 @@ mod tests {
             #[rstest]
             #[case("file exists, matcher is succeeded",
                 "echo -n hello >{}",
-                vec![TestMatcherOld::new_success(Value::from(true))],
+                vec![new_stream_test_success(Value::from(true))],
                 None)]
             #[case("file exists, matcher is failed",
                 "echo -n hello >{}",
-                vec![TestMatcherOld::new_failure(Value::from(true))],
-                Some(vec![TestMatcherOld::failure_message("hello".as_bytes())]))]
+                vec![new_stream_test_failure(Value::from(true))],
+                Some(vec![TestMatcher::failure_message("hello".as_bytes())]))]
             #[case("file dose not exist",
                 "rm -f {}",
-                vec![TestMatcherOld::new_failure(Value::from(true))],
+                vec![new_stream_test_failure(Value::from(true))],
                 Some(vec!["dose not exist".to_string()]))]
             #[case("given is not file",
                 "mkdir -p {}",
-                vec![TestMatcherOld::new_failure(Value::from(true))],
+                vec![new_stream_test_failure(Value::from(true))],
                 Some(vec!["is not file".to_string()]))]
             #[case("cannot read file",
                 "echo -n hello >{}; chmod 0200 {}",
-                vec![TestMatcherOld::new_failure(Value::from(true))],
+                vec![new_stream_test_failure(Value::from(true))],
                 Some(vec!["cannot read file".to_string()]))]
             fn when_exec_succeeded_with_files_matcher(
                 #[case] title: &str,
                 #[case] command: &str,
-                #[case] matchers: Vec<Box<dyn MatcherOld<Vec<u8>>>>,
+                #[case] matchers: Vec<StreamMatcher>,
                 #[case] expected_messages: Option<Vec<String>>,
             ) {
                 let dir = tempfile::tempdir().unwrap();
@@ -664,7 +665,7 @@ mod tests {
                 new_status_test_failure(Value::from(true)),
                 vec![("setup1", None), ("setup2", None)],
                 vec![("teardown1", None), ("teardown2", None)],
-                indexmap!{ format!("main:{}", *STATUS_STRING) => vec![TestMatcherOld::failure_message(42)] },
+                indexmap!{ format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(42)] },
                 vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
             #[case("when first setup hook is failed, target command and remaning hooks are not executed",
                 new_status_test_failure(Value::from(true)),
@@ -676,7 +677,7 @@ mod tests {
                 new_status_test_failure(Value::from(true)),
                 vec![("setup1", None), ("setup2", None)],
                 vec![("teardown1", None), ("teardown2", Some("teardown2 failed"))],
-                indexmap!{ format!("main:{}", *STATUS_STRING) => vec![TestMatcherOld::failure_message(42)], TEARDOWN_STRING.clone() => vec!["teardown2 failed".to_string()] },
+                indexmap!{ format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(42)], TEARDOWN_STRING.clone() => vec!["teardown2 failed".to_string()] },
                 vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
             fn when_hooks_given(
                 #[case] title: &str,
