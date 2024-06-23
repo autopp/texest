@@ -4,6 +4,8 @@ mod simple_formatter;
 use std::io::Write;
 
 use crate::test_case::{TestCase, TestResult, TestResultSummary};
+use json_formatter::JsonFormatter;
+use simple_formatter::SimpleFormatter;
 
 pub enum Color {
     #[allow(dead_code)]
@@ -39,65 +41,68 @@ impl Color {
     }
 }
 
-pub trait Formatter<W: Write> {
-    fn on_run_start(&mut self, w: &mut W, cm: &ColorMarker) -> Result<(), String>;
-    fn on_test_case_start(
-        &mut self,
-        w: &mut W,
-        cm: &ColorMarker,
-        test_case: &TestCase,
-    ) -> Result<(), String>;
-    fn on_test_case_end(
-        &mut self,
-        w: &mut W,
-        cm: &ColorMarker,
-        test_result: &TestResult,
-    ) -> Result<(), String>;
-    fn on_run_end(
-        &mut self,
-        w: &mut W,
-        cm: &ColorMarker,
-        summary: &TestResultSummary,
-    ) -> Result<(), String>;
+pub enum Formatter {
+    Simple(SimpleFormatter),
+    Json(JsonFormatter),
 }
 
-impl<W: Write, F: Formatter<W> + ?Sized> Formatter<W> for Box<F> {
-    fn on_run_start(&mut self, w: &mut W, cm: &ColorMarker) -> Result<(), String> {
-        (**self).on_run_start(w, cm)
+impl Formatter {
+    pub fn on_run_start<W: Write>(&mut self, w: &mut W, cm: &ColorMarker) -> Result<(), String> {
+        match self {
+            Formatter::Simple(f) => f.on_run_start(w, cm),
+            Formatter::Json(f) => f.on_run_start(w, cm),
+        }
     }
 
-    fn on_test_case_start(
+    pub fn on_test_case_start<W: Write>(
         &mut self,
         w: &mut W,
         cm: &ColorMarker,
         test_case: &TestCase,
     ) -> Result<(), String> {
-        (**self).on_test_case_start(w, cm, test_case)
+        match self {
+            Formatter::Simple(f) => f.on_test_case_start(w, cm, test_case),
+            Formatter::Json(f) => f.on_test_case_start(w, cm, test_case),
+        }
     }
 
-    fn on_test_case_end(
+    pub fn on_test_case_end<W: Write>(
         &mut self,
         w: &mut W,
         cm: &ColorMarker,
         test_result: &TestResult,
     ) -> Result<(), String> {
-        (**self).on_test_case_end(w, cm, test_result)
+        match self {
+            Formatter::Simple(f) => f.on_test_case_end(w, cm, test_result),
+            Formatter::Json(f) => f.on_test_case_end(w, cm, test_result),
+        }
     }
 
-    fn on_run_end(
+    pub fn on_run_end<W: Write>(
         &mut self,
         w: &mut W,
         cm: &ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String> {
-        (**self).on_run_end(w, cm, summary)
+        match self {
+            Formatter::Simple(f) => f.on_run_end(w, cm, summary),
+            Formatter::Json(f) => f.on_run_end(w, cm, summary),
+        }
+    }
+
+    pub fn new_simple() -> Self {
+        Formatter::Simple(SimpleFormatter {})
+    }
+
+    pub fn new_json() -> Self {
+        Formatter::Json(JsonFormatter {})
     }
 }
 
-pub struct Reporter<W: Write, F: Formatter<W>> {
+pub struct Reporter<W: Write> {
     w: W,
     use_color: bool,
-    formatter: F,
+    formatter: Formatter,
 }
 
 pub struct ColorMarker {
@@ -166,8 +171,8 @@ impl ColorMarker {
     }
 }
 
-impl<W: Write, F: Formatter<W>> Reporter<W, F> {
-    pub fn new(w: W, use_color: bool, formatter: F) -> Self {
+impl<W: Write> Reporter<W> {
+    pub fn new(w: W, use_color: bool, formatter: Formatter) -> Self {
         Self {
             w,
             use_color,
@@ -197,6 +202,3 @@ impl<W: Write, F: Formatter<W>> Reporter<W, F> {
         self.formatter.on_run_end(&mut self.w, &cm, summary)
     }
 }
-
-pub use json_formatter::JsonFormatter;
-pub use simple_formatter::SimpleFormatter;

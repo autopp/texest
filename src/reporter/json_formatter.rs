@@ -2,8 +2,6 @@ use std::io::Write;
 
 use crate::test_case::TestResultSummary;
 
-use super::Formatter;
-
 pub struct JsonFormatter {}
 
 #[derive(serde::Serialize)]
@@ -28,12 +26,16 @@ struct ReportJson<'a> {
     test_results: Vec<TestResultJson<'a>>,
 }
 
-impl<W: Write> Formatter<W> for JsonFormatter {
-    fn on_run_start(&mut self, _w: &mut W, _cm: &super::ColorMarker) -> Result<(), String> {
+impl JsonFormatter {
+    pub fn on_run_start<W: Write>(
+        &mut self,
+        _w: &mut W,
+        _cm: &super::ColorMarker,
+    ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_test_case_start(
+    pub fn on_test_case_start<W: Write>(
         &mut self,
         _w: &mut W,
         _cm: &super::ColorMarker,
@@ -42,7 +44,7 @@ impl<W: Write> Formatter<W> for JsonFormatter {
         Ok(())
     }
 
-    fn on_test_case_end(
+    pub fn on_test_case_end<W: Write>(
         &mut self,
         _w: &mut W,
         _cm: &super::ColorMarker,
@@ -51,7 +53,7 @@ impl<W: Write> Formatter<W> for JsonFormatter {
         Ok(())
     }
 
-    fn on_run_end(
+    pub fn on_run_end<W: Write>(
         &mut self,
         w: &mut W,
         _cm: &super::ColorMarker,
@@ -107,11 +109,7 @@ mod tests {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
 
-        let r = <JsonFormatter as Formatter<Vec<u8>>>::on_run_start(
-            &mut f,
-            &mut buf,
-            &ColorMarker::new(false),
-        );
+        let r = f.on_run_start(&mut buf, &ColorMarker::new(false));
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -141,12 +139,7 @@ mod tests {
             failures: indexmap![],
         };
 
-        let r = <JsonFormatter as Formatter<Vec<u8>>>::on_test_case_end(
-            &mut f,
-            &mut buf,
-            &ColorMarker::new(false),
-            &test_result,
-        );
+        let r = f.on_test_case_end(&mut buf, &ColorMarker::new(false), &test_result);
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -173,12 +166,7 @@ mod tests {
             ],
         };
 
-        let r = <JsonFormatter as Formatter<Vec<u8>>>::on_run_end(
-            &mut f,
-            &mut buf,
-            &ColorMarker::new(false),
-            &test_result,
-        );
+        let r = f.on_run_end(&mut buf, &ColorMarker::new(false), &test_result);
 
         assert!(r.is_ok());
         assert_eq!(

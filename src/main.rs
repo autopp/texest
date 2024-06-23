@@ -155,9 +155,9 @@ fn main() {
         Color::Never => false,
     };
 
-    let f: Box<dyn Formatter<_>> = match args.format {
-        Format::Simple => Box::new(reporter::SimpleFormatter {}),
-        Format::Json => Box::new(reporter::JsonFormatter {}),
+    let f = match args.format {
+        Format::Simple => Formatter::new_simple(),
+        Format::Json => Formatter::new_json(),
     };
 
     let mut w = std::io::stdout();

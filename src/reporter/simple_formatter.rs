@@ -2,16 +2,18 @@ use std::io::Write;
 
 use crate::test_case::TestResultSummary;
 
-use super::Formatter;
-
 pub struct SimpleFormatter {}
 
-impl<W: Write> Formatter<W> for SimpleFormatter {
-    fn on_run_start(&mut self, _w: &mut W, _cm: &super::ColorMarker) -> Result<(), String> {
+impl SimpleFormatter {
+    pub fn on_run_start<W: Write>(
+        &mut self,
+        _w: &mut W,
+        _cm: &super::ColorMarker,
+    ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_test_case_start(
+    pub fn on_test_case_start<W: Write>(
         &mut self,
         _w: &mut W,
         _cm: &super::ColorMarker,
@@ -20,7 +22,7 @@ impl<W: Write> Formatter<W> for SimpleFormatter {
         Ok(())
     }
 
-    fn on_test_case_end(
+    pub fn on_test_case_end<W: Write>(
         &mut self,
         w: &mut W,
         cm: &super::ColorMarker,
@@ -34,7 +36,7 @@ impl<W: Write> Formatter<W> for SimpleFormatter {
         .map_err(|err| err.to_string())
     }
 
-    fn on_run_end(
+    pub fn on_run_end<W: Write>(
         &mut self,
         w: &mut W,
         _cm: &super::ColorMarker,
