@@ -1,30 +1,30 @@
-use crate::test_case::TestResultSummary;
+use std::io::Write;
 
-use super::Formatter;
+use crate::test_case::TestResultSummary;
 
 pub struct SimpleFormatter {}
 
-impl Formatter for SimpleFormatter {
-    fn on_run_start(
+impl SimpleFormatter {
+    pub fn on_run_start<W: Write>(
         &mut self,
-        _w: &mut dyn std::io::Write,
+        _w: &mut W,
         _cm: &super::ColorMarker,
     ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_test_case_start(
+    pub fn on_test_case_start<W: Write>(
         &mut self,
-        _w: &mut dyn std::io::Write,
+        _w: &mut W,
         _cm: &super::ColorMarker,
         _test_case: &crate::test_case::TestCase,
     ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_test_case_end(
+    pub fn on_test_case_end<W: Write>(
         &mut self,
-        w: &mut dyn std::io::Write,
+        w: &mut W,
         cm: &super::ColorMarker,
         test_result: &crate::test_case::TestResult,
     ) -> Result<(), String> {
@@ -36,9 +36,9 @@ impl Formatter for SimpleFormatter {
         .map_err(|err| err.to_string())
     }
 
-    fn on_run_end(
+    pub fn on_run_end<W: Write>(
         &mut self,
-        w: &mut dyn std::io::Write,
+        w: &mut W,
         _cm: &super::ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String> {

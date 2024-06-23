@@ -1,6 +1,6 @@
-use crate::test_case::TestResultSummary;
+use std::io::Write;
 
-use super::Formatter;
+use crate::test_case::TestResultSummary;
 
 pub struct JsonFormatter {}
 
@@ -26,36 +26,36 @@ struct ReportJson<'a> {
     test_results: Vec<TestResultJson<'a>>,
 }
 
-impl Formatter for JsonFormatter {
-    fn on_run_start(
+impl JsonFormatter {
+    pub fn on_run_start<W: Write>(
         &mut self,
-        _w: &mut dyn std::io::Write,
+        _w: &mut W,
         _cm: &super::ColorMarker,
     ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_test_case_start(
+    pub fn on_test_case_start<W: Write>(
         &mut self,
-        _w: &mut dyn std::io::Write,
+        _w: &mut W,
         _cm: &super::ColorMarker,
         _test_case: &crate::test_case::TestCase,
     ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_test_case_end(
+    pub fn on_test_case_end<W: Write>(
         &mut self,
-        _w: &mut dyn std::io::Write,
+        _w: &mut W,
         _cm: &super::ColorMarker,
         _test_result: &crate::test_case::TestResult,
     ) -> Result<(), String> {
         Ok(())
     }
 
-    fn on_run_end(
+    pub fn on_run_end<W: Write>(
         &mut self,
-        w: &mut dyn std::io::Write,
+        w: &mut W,
         _cm: &super::ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String> {
@@ -109,8 +109,7 @@ mod tests {
         let mut f = JsonFormatter {};
         let mut buf = Vec::<u8>::new();
 
-        let r =
-            <JsonFormatter as Formatter>::on_run_start(&mut f, &mut buf, &ColorMarker::new(false));
+        let r = f.on_run_start(&mut buf, &ColorMarker::new(false));
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -140,12 +139,7 @@ mod tests {
             failures: indexmap![],
         };
 
-        let r = <JsonFormatter as Formatter>::on_test_case_end(
-            &mut f,
-            &mut buf,
-            &ColorMarker::new(false),
-            &test_result,
-        );
+        let r = f.on_test_case_end(&mut buf, &ColorMarker::new(false), &test_result);
 
         assert!(r.is_ok());
         assert!(buf.is_empty());
@@ -172,12 +166,7 @@ mod tests {
             ],
         };
 
-        let r = <JsonFormatter as Formatter>::on_run_end(
-            &mut f,
-            &mut buf,
-            &ColorMarker::new(false),
-            &test_result,
-        );
+        let r = f.on_run_end(&mut buf, &ColorMarker::new(false), &test_result);
 
         assert!(r.is_ok());
         assert_eq!(

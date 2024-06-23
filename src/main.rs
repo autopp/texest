@@ -11,11 +11,7 @@ mod test_case_expr;
 mod tmp_dir;
 mod validator;
 
-use std::{
-    collections::HashSet,
-    fs::File,
-    io::{IsTerminal, Write},
-};
+use std::{collections::HashSet, fs::File, io::IsTerminal};
 
 use clap::{Parser, ValueEnum};
 
@@ -159,13 +155,13 @@ fn main() {
         Color::Never => false,
     };
 
-    let mut f: Box<dyn Formatter> = match args.format {
-        Format::Simple => Box::new(reporter::SimpleFormatter {}),
-        Format::Json => Box::new(reporter::JsonFormatter {}),
+    let f = match args.format {
+        Format::Simple => Formatter::new_simple(),
+        Format::Json => Formatter::new_json(),
     };
 
-    let mut w: Box<dyn Write> = Box::new(std::io::stdout());
-    let mut r = Reporter::new(&mut w, use_color, &mut f);
+    let mut w = std::io::stdout();
+    let mut r = Reporter::new(&mut w, use_color, f);
 
     let result = run_tests(test_case_files, &mut r);
 
