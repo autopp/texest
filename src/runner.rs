@@ -1,11 +1,13 @@
+use std::io::Write;
+
 use crate::{
-    reporter::Reporter,
+    reporter::{Formatter, Reporter},
     test_case::{TestCaseFile, TestResult, TestResultSummary},
 };
 
-pub fn run_tests(
+pub fn run_tests<W: Write, F: Formatter<W>>(
     test_case_files: Vec<TestCaseFile>,
-    reporter: &mut Reporter,
+    reporter: &mut Reporter<W, F>,
 ) -> Result<TestResultSummary, String> {
     reporter.on_run_start()?;
     let test_results = test_case_files

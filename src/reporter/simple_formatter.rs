@@ -1,21 +1,19 @@
+use std::io::Write;
+
 use crate::test_case::TestResultSummary;
 
 use super::Formatter;
 
 pub struct SimpleFormatter {}
 
-impl Formatter for SimpleFormatter {
-    fn on_run_start(
-        &mut self,
-        _w: &mut dyn std::io::Write,
-        _cm: &super::ColorMarker,
-    ) -> Result<(), String> {
+impl<W: Write> Formatter<W> for SimpleFormatter {
+    fn on_run_start(&mut self, _w: &mut W, _cm: &super::ColorMarker) -> Result<(), String> {
         Ok(())
     }
 
     fn on_test_case_start(
         &mut self,
-        _w: &mut dyn std::io::Write,
+        _w: &mut W,
         _cm: &super::ColorMarker,
         _test_case: &crate::test_case::TestCase,
     ) -> Result<(), String> {
@@ -24,7 +22,7 @@ impl Formatter for SimpleFormatter {
 
     fn on_test_case_end(
         &mut self,
-        w: &mut dyn std::io::Write,
+        w: &mut W,
         cm: &super::ColorMarker,
         test_result: &crate::test_case::TestResult,
     ) -> Result<(), String> {
@@ -38,7 +36,7 @@ impl Formatter for SimpleFormatter {
 
     fn on_run_end(
         &mut self,
-        w: &mut dyn std::io::Write,
+        w: &mut W,
         _cm: &super::ColorMarker,
         summary: &TestResultSummary,
     ) -> Result<(), String> {
