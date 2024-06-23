@@ -8,7 +8,7 @@ on:
 jobs:
   cleanup-release:
     runs-on: ubuntu-latest
-    if: "startsWith(github.head_ref, 'release/') && !github.event.pull_request.head.fork"
+    if: (startsWith(github.head_ref, 'release/') && !github.event.pull_request.head.repo.fork)
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
