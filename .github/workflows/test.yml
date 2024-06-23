@@ -5,6 +5,8 @@ on:
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
+      CODECOV_TOKEN:
+        required: true
     outputs:
       version:
         value: ${{ jobs.test-and-build.outputs.version }}
