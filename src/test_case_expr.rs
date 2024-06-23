@@ -5,7 +5,7 @@ use serde_yaml::Value;
 
 use crate::{
     expr::{Context, EvalOutput, Expr},
-    matcher::{Matcher, MatcherRegistry, StatusMatcherRegistry, StreamMatcherRegistry},
+    matcher::{StatusMatcher, StreamMatcher},
     test_case::{BackgroundConfig, Process, ProcessMode, SetupHook, TestCase, WaitCondition},
     tmp_dir::TmpDirSupplier,
     validator::{Validator, Violation},
@@ -79,18 +79,12 @@ pub struct TestCaseExprFile {
     pub test_case_exprs: Vec<TestCaseExpr>,
 }
 
-type ProcessMatchersTuple = (
-    Vec<Box<dyn Matcher<i32>>>,
-    Vec<Box<dyn Matcher<Vec<u8>>>>,
-    Vec<Box<dyn Matcher<Vec<u8>>>>,
-);
+type ProcessMatchersTuple = (Vec<StatusMatcher>, Vec<StreamMatcher>, Vec<StreamMatcher>);
 
 const DEFAULT_PROCESS_NAME: &str = "main";
 
 pub fn eval_test_expr<T: TmpDirSupplier>(
     tmp_dir_supplier: &mut T,
-    status_mr: &StatusMatcherRegistry,
-    stream_mr: &StreamMatcherRegistry,
     test_case_expr: &TestCaseExpr,
 ) -> Result<Vec<TestCase>, TestExprError> {
     let mut v =
@@ -105,9 +99,9 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
         ProcessesMatchersExpr::Single(pm) => {
             indexmap! {
                 DEFAULT_PROCESS_NAME.to_string() => (
-                    eval_matcher_exprs(v, &mut ctx, "status", status_mr, &pm.status_matcher_exprs),
-                    eval_matcher_exprs(v, &mut ctx, "stdout", stream_mr, &pm.stdout_matcher_exprs),
-                    eval_matcher_exprs(v, &mut ctx, "stderr", stream_mr, &pm.stderr_matcher_exprs),
+                    eval_matcher_exprs(v, &mut ctx, "status", StatusMatcher::parse, &pm.status_matcher_exprs),
+                    eval_matcher_exprs(v, &mut ctx, "stdout", StreamMatcher::parse, &pm.stdout_matcher_exprs),
+                    eval_matcher_exprs(v, &mut ctx, "stderr", StreamMatcher::parse, &pm.stderr_matcher_exprs),
                 )
             }
         }
@@ -122,21 +116,21 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
                                 v,
                                 &mut ctx,
                                 "status",
-                                status_mr,
+                                StatusMatcher::parse,
                                 &pm.status_matcher_exprs,
                             ),
                             eval_matcher_exprs(
                                 v,
                                 &mut ctx,
                                 "stdout",
-                                stream_mr,
+                                StreamMatcher::parse,
                                 &pm.stdout_matcher_exprs,
                             ),
                             eval_matcher_exprs(
                                 v,
                                 &mut ctx,
                                 "stderr",
-                                stream_mr,
+                                StreamMatcher::parse,
                                 &pm.stderr_matcher_exprs,
                             ),
                         ),
@@ -190,7 +184,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
             .map(|(path, matcher_exprs)| {
                 (
                     path.clone(),
-                    eval_matcher_exprs(v, &mut ctx, path, stream_mr, matcher_exprs),
+                    eval_matcher_exprs(v, &mut ctx, path, StreamMatcher::parse, matcher_exprs),
                 )
             })
             .collect()
@@ -241,18 +235,18 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     }
 }
 
-fn eval_matcher_exprs<T, TS: TmpDirSupplier>(
+fn eval_matcher_exprs<T, TS: TmpDirSupplier, F: Fn(&mut Validator, &str, &Value) -> Option<T>>(
     v: &mut Validator,
     ctx: &mut Context<'_, TS>,
     subject: &str,
-    mr: &MatcherRegistry<T>,
+    parse: F,
     matcher_exprs: &IndexMap<String, Expr>,
-) -> Vec<Box<dyn Matcher<T>>> {
+) -> Vec<T> {
     v.in_field(subject, |v| {
         matcher_exprs
             .iter()
             .filter_map(|(name, param_expr)| match ctx.eval_expr(param_expr) {
-                Ok(param) => mr.parse(name, v, &param.value),
+                Ok(param) => parse(v, name, &param.value),
                 Err(message) => {
                     v.in_field(name, |v| {
                         v.add_violation(format!("eval error: {}", message))
@@ -268,9 +262,9 @@ fn eval_process_expr<T: TmpDirSupplier>(
     v: &mut Validator,
     ctx: &mut Context<'_, T>,
     setup_hooks: &mut Vec<Box<dyn SetupHook>>,
-    status_matchers: Vec<Box<dyn Matcher<i32>>>,
-    stdout_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
-    stderr_matchers: Vec<Box<dyn Matcher<Vec<u8>>>>,
+    status_matchers: Vec<StatusMatcher>,
+    stdout_matchers: Vec<StreamMatcher>,
+    stderr_matchers: Vec<StreamMatcher>,
     process_expr: &ProcessExpr,
 ) -> Process {
     let command: Vec<String> = v.in_field("command", |v| {
@@ -591,8 +585,8 @@ mod tests {
                 SetupTmpFileHook,
             },
             matcher::testutil::{
-                new_test_matcher_registry, TestMatcher, PARSE_ERROR_MATCHER, SUCCESS_MATCHER,
-                VIOLATION_MESSAGE,
+                new_status_test_success, new_stream_test_success, PARSE_ERROR_VIOLATION_MESSAGE,
+                TEST_PARSE_ERROR_NAME, TEST_SUCCESS_NAME,
             },
             test_case::{BackgroundConfig, ProcessMode},
             test_case_expr::testutil::{
@@ -794,7 +788,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{
-                        SUCCESS_MATCHER => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(true),
                     },
                     ..Default::default()
                 }),
@@ -814,7 +808,7 @@ mod tests {
                             mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
-                            status_matchers: vec!(TestMatcher::new_success(Value::from(true))),
+                            status_matchers: vec!(new_status_test_success(true)),
                             stdout_matchers: vec![],
                             stderr_matchers: vec![],
                         }
@@ -829,7 +823,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap!{
-                        SUCCESS_MATCHER => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(true),
                     },
                     ..Default::default()
                 }),
@@ -850,7 +844,7 @@ mod tests {
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
-                            stdout_matchers: vec![TestMatcher::new_success(Value::from(true))],
+                            stdout_matchers: vec![new_stream_test_success(Value::from(true))],
                             stderr_matchers: vec![],
                         }
                     },
@@ -864,7 +858,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap! {
-                        SUCCESS_MATCHER => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(true),
                     },
                     ..Default::default()
                 }),
@@ -886,7 +880,7 @@ mod tests {
                             tee_stderr: false,
                             status_matchers: vec![],
                             stdout_matchers: vec![],
-                            stderr_matchers: vec![TestMatcher::new_success(Value::from(true))],
+                            stderr_matchers: vec![new_stream_test_success(Value::from(true))],
                         }
                     },
                     files_matchers: indexmap! {},
@@ -902,7 +896,7 @@ mod tests {
                 }),
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
-                        SUCCESS_MATCHER => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(true),
                     },
                 },
                 ..Default::default()
@@ -927,7 +921,7 @@ mod tests {
                         }
                     },
                     files_matchers: indexmap! {
-                        "/tmp/output.txt".to_string() => vec![TestMatcher::new_success(Value::from(true))],
+                        "/tmp/output.txt".to_string() => vec![new_stream_test_success(Value::from(true))],
                     },
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
@@ -941,15 +935,8 @@ mod tests {
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let status_mr = new_test_matcher_registry();
-            let stream_mr = new_test_matcher_registry();
 
-            let actual = eval_test_expr(
-                &mut tmp_dir_supplier,
-                &status_mr,
-                &stream_mr,
-                &given.build(),
-            );
+            let actual = eval_test_expr(&mut tmp_dir_supplier, &given.build());
 
             assert_eq!(Ok(expected), actual, "{}", title);
         }
@@ -959,8 +946,6 @@ mod tests {
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_path_buf = tmp_dir.path().to_path_buf();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let status_mr = new_test_matcher_registry();
-            let stream_mr = new_test_matcher_registry();
 
             let given = TestCaseExprTemplate {
                 name: Some(literal_expr("test")),
@@ -974,12 +959,7 @@ mod tests {
                 ..Default::default()
             };
 
-            let actual = eval_test_expr(
-                &mut tmp_dir_supplier,
-                &status_mr,
-                &stream_mr,
-                &given.build(),
-            );
+            let actual = eval_test_expr(&mut tmp_dir_supplier, &given.build());
 
             let tmp_file_path_buf = tmp_dir_path_buf.join("input.txt");
 
@@ -1139,14 +1119,14 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{
-                        SUCCESS_MATCHER => env_var_expr("_undefined"),
+                        TEST_SUCCESS_NAME => env_var_expr("_undefined"),
                     },
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
-                violation(".expect.status.success", "eval error: env var _undefined is not defined")
+                violation(".expect.status.test_success", "eval error: env var _undefined is not defined")
             ]
         )]
         #[case("with undefined status matcher",
@@ -1160,35 +1140,35 @@ mod tests {
                 ..Default::default()
             },
             vec![
-                violation(".expect.status", "test matcher unknown is not defined")
+                violation(".expect.status", "status matcher \"unknown\" is not defined")
             ]
         )]
         #[case("with invalid status matcher",
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap! {
-                        PARSE_ERROR_MATCHER => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(true),
                     },
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
-                violation(".expect.status.parse_error", VIOLATION_MESSAGE)
+                violation(".expect.status.test_parse_error", PARSE_ERROR_VIOLATION_MESSAGE)
             ]
         )]
         #[case("with eval error in stdout matcher param",
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap! {
-                        SUCCESS_MATCHER => env_var_expr("_undefined"),
+                        TEST_SUCCESS_NAME => env_var_expr("_undefined"),
                     },
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
-                violation(".expect.stdout.success", "eval error: env var _undefined is not defined")
+                violation(".expect.stdout.test_success", "eval error: env var _undefined is not defined")
             ]
         )]
         #[case("with undefined stdout matcher",
@@ -1202,35 +1182,35 @@ mod tests {
                 ..Default::default()
             },
             vec![
-                violation(".expect.stdout", "test matcher unknown is not defined")
+                violation(".expect.stdout", "stream matcher \"unknown\" is not defined")
             ]
         )]
         #[case("with invalid stdout matcher",
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap! {
-                        PARSE_ERROR_MATCHER => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(true),
                     },
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
-                violation(".expect.stdout.parse_error", VIOLATION_MESSAGE)
+                violation(".expect.stdout.test_parse_error", PARSE_ERROR_VIOLATION_MESSAGE)
             ]
         )]
         #[case("with eval error in stdout matcher param",
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap! {
-                        SUCCESS_MATCHER => env_var_expr("_undefined"),
+                        TEST_SUCCESS_NAME => env_var_expr("_undefined"),
                     },
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
-                violation(".expect.stdout.success", "eval error: env var _undefined is not defined")
+                violation(".expect.stdout.test_success", "eval error: env var _undefined is not defined")
             ]
         )]
         #[case("with undefined stderr matcher",
@@ -1244,21 +1224,21 @@ mod tests {
                 ..Default::default()
             },
             vec![
-                violation(".expect.stderr", "test matcher unknown is not defined")
+                violation(".expect.stderr", "stream matcher \"unknown\" is not defined")
             ]
         )]
         #[case("with invalid stderr matcher",
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap! {
-                        PARSE_ERROR_MATCHER => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(true),
                     },
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
-                violation(".expect.stderr.parse_error", VIOLATION_MESSAGE)
+                violation(".expect.stderr.test_parse_error", PARSE_ERROR_VIOLATION_MESSAGE)
             ]
         )]
         #[case("with undefined file matcher",
@@ -1271,33 +1251,33 @@ mod tests {
                 ..Default::default()
             },
             vec![
-                violation(".expect.files./tmp/output.txt", "test matcher unknown is not defined")
+                violation(".expect.files./tmp/output.txt", "stream matcher \"unknown\" is not defined")
             ]
         )]
         #[case("with invalid file matcher",
             TestCaseExprTemplate {
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
-                        PARSE_ERROR_MATCHER => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(true),
                     },
                 },
                 ..Default::default()
             },
             vec![
-                violation(".expect.files./tmp/output.txt.parse_error", VIOLATION_MESSAGE)
+                violation(".expect.files./tmp/output.txt.test_parse_error", PARSE_ERROR_VIOLATION_MESSAGE)
             ]
         )]
         #[case("with eval error in files matcher param",
             TestCaseExprTemplate {
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
-                        SUCCESS_MATCHER => env_var_expr("_undefined"),
+                        TEST_SUCCESS_NAME => env_var_expr("_undefined"),
                     },
                 },
                 ..Default::default()
             },
             vec![
-                violation(".expect.files./tmp/output.txt.success", "eval error: env var _undefined is not defined")
+                violation(".expect.files./tmp/output.txt.test_success", "eval error: env var _undefined is not defined")
             ]
         )]
         fn failure_cases(
@@ -1307,15 +1287,7 @@ mod tests {
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let status_mr = new_test_matcher_registry();
-            let stream_mr = new_test_matcher_registry();
-
-            let actual = eval_test_expr(
-                &mut tmp_dir_supplier,
-                &status_mr,
-                &stream_mr,
-                &given.build(),
-            );
+            let actual = eval_test_expr(&mut tmp_dir_supplier, &given.build());
 
             assert_eq!(
                 Err(TestExprError {

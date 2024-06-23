@@ -1,14 +1,12 @@
-use crate::{matcher::Matcher, validator::Validator};
+use crate::validator::Validator;
 
-use super::STREAM_MATCHER_TAG;
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ContainMatcher {
-    expected: Vec<u8>,
+    pub(super) expected: Vec<u8>,
 }
 
-impl Matcher<Vec<u8>> for ContainMatcher {
-    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+impl ContainMatcher {
+    pub fn matches(&self, actual: &[u8]) -> Result<(bool, String), String> {
         let matched = actual
             .windows(self.expected.len())
             .any(|w| w == self.expected);
@@ -29,25 +27,11 @@ impl Matcher<Vec<u8>> for ContainMatcher {
         ))
     }
 
-    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
-        (
-            STREAM_MATCHER_TAG,
-            "contain",
-            serde_yaml::to_value(&self.expected).unwrap(),
-        )
-    }
-}
-
-pub fn parse_contain_matcher(
-    v: &mut Validator,
-    x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<Vec<u8>>>> {
-    v.must_be_string(x).map(|expected| {
-        let b: Box<dyn Matcher<Vec<u8>>> = Box::new(ContainMatcher {
+    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+        v.must_be_string(x).map(|expected| Self {
             expected: expected.into(),
-        });
-        b
-    })
+        })
+    }
 }
 
 #[cfg(test)]
@@ -73,11 +57,11 @@ mod tests {
         };
         assert_eq!(
             Ok((expected_matched, expected_message.to_string())),
-            m.matches(&given.as_bytes().to_vec())
+            m.matches(given.as_bytes())
         );
     }
 
-    mod parser {
+    mod parse {
         use serde_yaml::Value;
 
         use super::*;
@@ -88,12 +72,12 @@ mod tests {
         fn success_case() {
             let (mut v, _) = new_validator();
             let x = Value::from("hello");
-            let actual = parse_contain_matcher(&mut v, &x).unwrap();
+            let actual = ContainMatcher::parse(&mut v, &x).unwrap();
 
-            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(ContainMatcher {
+            let expected = ContainMatcher {
                 expected: "hello".into(),
-            });
-            assert_eq!(&expected, &actual);
+            };
+            assert_eq!(expected, actual);
         }
 
         #[rstest]
@@ -104,7 +88,7 @@ mod tests {
             #[case] expected_message: &str,
         ) {
             let (mut v, violation) = new_validator();
-            let actual = parse_contain_matcher(&mut v, &given);
+            let actual = ContainMatcher::parse(&mut v, &given);
 
             assert!(actual.is_none(), "{}", title);
             assert_eq!(

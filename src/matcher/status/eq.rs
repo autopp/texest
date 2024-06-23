@@ -1,15 +1,13 @@
-use crate::{matcher::Matcher, validator::Validator};
+use crate::validator::Validator;
 
-use super::STATUS_MATCHER_TAG;
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct EqMatcher {
-    expected: i32,
+    pub(super) expected: i32,
 }
 
-impl Matcher<i32> for EqMatcher {
-    fn matches(&self, actual: &i32) -> Result<(bool, String), String> {
-        let matched = self.expected == *actual;
+impl EqMatcher {
+    pub fn matches(&self, actual: i32) -> Result<(bool, String), String> {
+        let matched = self.expected == actual;
 
         Ok((
             matched,
@@ -21,28 +19,17 @@ impl Matcher<i32> for EqMatcher {
         ))
     }
 
-    fn serialize(&self) -> (&str, &str, serde_yaml::Value) {
-        (
-            STATUS_MATCHER_TAG,
-            "eq",
-            serde_yaml::to_value(self.expected).unwrap(),
-        )
+    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+        v.must_be_uint(x).and_then(|expected| {
+            i32::try_from(expected)
+                .map_err(|err| {
+                    v.add_violation(format!("cannot treat {} as i32", expected));
+                    err
+                })
+                .ok()
+                .map(|expected| Self { expected })
+        })
     }
-}
-
-pub fn parse_eq_matcher(v: &mut Validator, x: &serde_yaml::Value) -> Option<Box<dyn Matcher<i32>>> {
-    v.must_be_uint(x).and_then(|expected| {
-        i32::try_from(expected)
-            .map_err(|err| {
-                v.add_violation(format!("cannot treat {} as i32", expected));
-                err
-            })
-            .ok()
-            .map(|expected| {
-                let b: Box<dyn Matcher<i32>> = Box::new(EqMatcher { expected });
-                b
-            })
-    })
 }
 
 #[cfg(test)]
@@ -57,12 +44,12 @@ mod tests {
     fn matches(#[case] given: i32, #[case] expected_matched: bool, #[case] expected_message: &str) {
         let m = EqMatcher { expected: 0 };
         assert_eq!(
-            m.matches(&given),
+            m.matches(given),
             Ok((expected_matched, expected_message.to_string()))
         );
     }
 
-    mod parser {
+    mod parse {
         use serde_yaml::Value;
 
         use super::*;
@@ -72,11 +59,10 @@ mod tests {
         #[test]
         fn success_case() {
             let (mut v, _) = new_validator();
-            let x = serde_yaml::to_value(0).unwrap();
-            let actual = parse_eq_matcher(&mut v, &x).unwrap();
-            let expected: Box<dyn Matcher<i32>> = Box::new(EqMatcher { expected: 0 });
+            let x = serde_yaml::to_value(1).unwrap();
+            let actual = EqMatcher::parse(&mut v, &x).unwrap();
 
-            assert_eq!(&expected, &actual);
+            assert_eq!(EqMatcher { expected: 1 }, actual);
         }
 
         #[rstest]
@@ -89,7 +75,7 @@ mod tests {
             #[case] expected_message: &str,
         ) {
             let (mut v, violation) = new_validator();
-            let actual = parse_eq_matcher(&mut v, &given);
+            let actual = EqMatcher::parse(&mut v, &given);
 
             assert!(actual.is_none(), "{}", title);
             assert_eq!(
