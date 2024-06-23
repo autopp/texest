@@ -43,3 +43,38 @@ pub mod testutil {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod create {
+        use super::*;
+        use pretty_assertions::assert_ne;
+
+        #[test]
+        fn the_created_dir_exists_only_alive_while_the_factory_is_alive() {
+            let tmp_dir = {
+                let mut tf = TmpDirFactory::new();
+                let tmp_dir = tf.create().unwrap().to_path_buf();
+
+                assert!(tmp_dir.is_dir());
+
+                tmp_dir
+            };
+
+            assert!(!tmp_dir.exists());
+        }
+
+        #[test]
+        fn new_dir_is_created_every_time() {
+            let mut tf = TmpDirFactory::new();
+            let tmp_dir1 = tf.create().unwrap().to_path_buf();
+            let tmp_dir2 = tf.create().unwrap().to_path_buf();
+
+            assert!(tmp_dir1.is_dir());
+            assert!(tmp_dir2.is_dir());
+            assert_ne!(tmp_dir1, tmp_dir2);
+        }
+    }
+}
