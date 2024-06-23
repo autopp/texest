@@ -1,6 +1,6 @@
 use similar::TextDiff;
 
-use crate::{matcher::Matcher, validator::Validator};
+use crate::{matcher::MatcherOld, validator::Validator};
 
 use super::STREAM_MATCHER_TAG;
 
@@ -9,8 +9,8 @@ pub struct EqMatcher {
     expected: Vec<u8>,
 }
 
-impl Matcher<Vec<u8>> for EqMatcher {
-    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+impl MatcherOld<Vec<u8>> for EqMatcher {
+    fn matches_old(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
         if actual == &self.expected {
             Ok((
                 true,
@@ -49,9 +49,9 @@ impl Matcher<Vec<u8>> for EqMatcher {
 pub fn parse_eq_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<Vec<u8>>>> {
+) -> Option<Box<dyn MatcherOld<Vec<u8>>>> {
     v.must_be_string(x).map(|expected| {
-        let b: Box<dyn Matcher<Vec<u8>>> = Box::new(EqMatcher {
+        let b: Box<dyn MatcherOld<Vec<u8>>> = Box::new(EqMatcher {
             expected: expected.into(),
         });
         b
@@ -77,7 +77,7 @@ mod tests {
         };
         assert_eq!(
             Ok((expected_matched, expected_message.to_string())),
-            m.matches(&given.as_bytes().to_vec()),
+            m.matches_old(&given.as_bytes().to_vec()),
         );
     }
 
@@ -93,7 +93,7 @@ mod tests {
             let (mut v, _) = new_validator();
             let x = serde_yaml::to_value("hello").unwrap();
             let actual = parse_eq_matcher(&mut v, &x).unwrap();
-            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(EqMatcher {
+            let expected: Box<dyn MatcherOld<Vec<u8>>> = Box::new(EqMatcher {
                 expected: "hello".into(),
             });
 

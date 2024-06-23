@@ -1,4 +1,4 @@
-use crate::{matcher::Matcher, validator::Validator};
+use crate::{matcher::MatcherOld, validator::Validator};
 
 use super::STREAM_MATCHER_TAG;
 
@@ -7,8 +7,8 @@ pub struct ContainMatcher {
     expected: Vec<u8>,
 }
 
-impl Matcher<Vec<u8>> for ContainMatcher {
-    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+impl MatcherOld<Vec<u8>> for ContainMatcher {
+    fn matches_old(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
         let matched = actual
             .windows(self.expected.len())
             .any(|w| w == self.expected);
@@ -41,9 +41,9 @@ impl Matcher<Vec<u8>> for ContainMatcher {
 pub fn parse_contain_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<Vec<u8>>>> {
+) -> Option<Box<dyn MatcherOld<Vec<u8>>>> {
     v.must_be_string(x).map(|expected| {
-        let b: Box<dyn Matcher<Vec<u8>>> = Box::new(ContainMatcher {
+        let b: Box<dyn MatcherOld<Vec<u8>>> = Box::new(ContainMatcher {
             expected: expected.into(),
         });
         b
@@ -73,7 +73,7 @@ mod tests {
         };
         assert_eq!(
             Ok((expected_matched, expected_message.to_string())),
-            m.matches(&given.as_bytes().to_vec())
+            m.matches_old(&given.as_bytes().to_vec())
         );
     }
 
@@ -90,7 +90,7 @@ mod tests {
             let x = Value::from("hello");
             let actual = parse_contain_matcher(&mut v, &x).unwrap();
 
-            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(ContainMatcher {
+            let expected: Box<dyn MatcherOld<Vec<u8>>> = Box::new(ContainMatcher {
                 expected: "hello".into(),
             });
             assert_eq!(&expected, &actual);

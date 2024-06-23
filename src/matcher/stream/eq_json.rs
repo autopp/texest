@@ -1,6 +1,6 @@
 use assert_json_diff::{assert_json_matches_no_panic, Config};
 
-use crate::{matcher::Matcher, validator::Validator};
+use crate::{matcher::MatcherOld, validator::Validator};
 
 use super::STREAM_MATCHER_TAG;
 
@@ -10,8 +10,8 @@ pub struct EqJsonMatcher {
     original: String,
 }
 
-impl Matcher<Vec<u8>> for EqJsonMatcher {
-    fn matches(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
+impl MatcherOld<Vec<u8>> for EqJsonMatcher {
+    fn matches_old(&self, actual: &Vec<u8>) -> Result<(bool, String), String> {
         let actual_str = String::from_utf8(actual.to_vec()).map_err(|_err| {
             format!(
                 "should be valid JSON string, but got \"{}\"",
@@ -55,11 +55,12 @@ impl Matcher<Vec<u8>> for EqJsonMatcher {
 pub fn parse_eq_json_matcher(
     v: &mut Validator,
     x: &serde_yaml::Value,
-) -> Option<Box<dyn Matcher<Vec<u8>>>> {
+) -> Option<Box<dyn MatcherOld<Vec<u8>>>> {
     v.must_be_string(x)
         .and_then(|original| match serde_json::from_str(&original) {
             Ok(expected) => {
-                let b: Box<dyn Matcher<Vec<u8>>> = Box::new(EqJsonMatcher { expected, original });
+                let b: Box<dyn MatcherOld<Vec<u8>>> =
+                    Box::new(EqJsonMatcher { expected, original });
                 Some(b)
             }
             _ => {
@@ -120,7 +121,7 @@ mod tests {
         };
         assert_eq!(
             Ok((expected_matched, expected_message.to_string())),
-            m.matches(&given.as_bytes().to_vec()),
+            m.matches_old(&given.as_bytes().to_vec()),
         );
     }
 
@@ -143,7 +144,7 @@ mod tests {
                 "message".to_string(),
                 serde_json::Value::String("hello".to_string()),
             );
-            let expected: Box<dyn Matcher<Vec<u8>>> = Box::new(EqJsonMatcher {
+            let expected: Box<dyn MatcherOld<Vec<u8>>> = Box::new(EqJsonMatcher {
                 original: original.into(),
                 expected: serde_json::Value::Object(m),
             });

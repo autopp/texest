@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{status, stream, MatcherParser};
+use super::{stream, MatcherParser};
 
 pub struct MatcherRegistry<T> {
     target: String,
@@ -26,7 +26,7 @@ impl<T> MatcherRegistry<T> {
         name: &str,
         v: &mut super::Validator,
         param: &serde_yaml::Value,
-    ) -> Option<Box<dyn super::Matcher<T>>> {
+    ) -> Option<Box<dyn super::MatcherOld<T>>> {
         match self.matchers.get(name) {
             Some(parser) => v.in_field(name, |v| parser(v, param)),
             None => {
@@ -35,14 +35,6 @@ impl<T> MatcherRegistry<T> {
             }
         }
     }
-}
-
-pub type StatusMatcherRegistry = MatcherRegistry<i32>;
-
-pub fn new_status_matcher_registry() -> StatusMatcherRegistry {
-    let mut r = StatusMatcherRegistry::new("status");
-    r.register("eq", status::parse_eq_matcher);
-    r
 }
 
 pub type StreamMatcherRegistry = MatcherRegistry<Vec<u8>>;
@@ -67,7 +59,9 @@ mod tests {
             use std::vec;
 
             use crate::{
-                matcher::testutil::{error_parse, parse_success, TestMatcher, VIOLATION_MESSAGE},
+                matcher::testutil::{
+                    error_parse, parse_success, TestMatcherOld, PARSE_ERROR_VIOLATION_MESSAGE,
+                },
                 validator::{Validator, Violation},
             };
 
@@ -86,7 +80,7 @@ mod tests {
                 let param = Value::from(true);
 
                 let actual = r.parse(NAME, &mut v, &param);
-                let expected = TestMatcher::new_success::<i32>(param);
+                let expected = TestMatcherOld::new_success::<i32>(param);
 
                 assert_eq!(&expected, &actual.unwrap())
             }
@@ -126,7 +120,7 @@ mod tests {
                     vec![Violation {
                         filename: "test.yaml".to_string(),
                         path: format!("$.{}", NAME),
-                        message: VIOLATION_MESSAGE.to_string()
+                        message: PARSE_ERROR_VIOLATION_MESSAGE.to_string()
                     }],
                     v.violations,
                 )

@@ -100,7 +100,6 @@ fn main() {
         std::process::exit(EXIT_CODE_INVALID_INPUT);
     }
 
-    let status_mr = matcher::new_status_matcher_registry();
     let stream_mr = matcher::new_stream_matcher_registry();
 
     let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
@@ -113,12 +112,7 @@ fn main() {
                 .test_case_exprs
                 .iter()
                 .map(|test_case_expr| {
-                    eval_test_expr(
-                        &mut tmp_dir_supplier,
-                        &status_mr,
-                        &stream_mr,
-                        test_case_expr,
-                    )
+                    eval_test_expr(&mut tmp_dir_supplier, &stream_mr, test_case_expr)
                 })
                 .collect::<Vec<_>>();
             (test_case_expr_file.filename.clone(), test_cases)
