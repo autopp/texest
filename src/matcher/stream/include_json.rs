@@ -2,7 +2,7 @@ use assert_json_diff::{assert_json_matches_no_panic, Config};
 
 use crate::validator::Validator;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct IncludeJsonMatcher {
     pub(super) expected: serde_json::Value,
     pub(super) original: String,

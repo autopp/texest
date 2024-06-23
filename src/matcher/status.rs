@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use eq::EqMatcher;
 use serde_yaml::Value;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum StatusMatcher {
     Eq(eq::EqMatcher),
     #[cfg(test)]

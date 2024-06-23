@@ -10,7 +10,7 @@ use serde_yaml::Value;
 
 use crate::validator::Validator;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum StreamMatcher {
     Eq(eq::EqMatcher),
     Contain(contain::ContainMatcher),

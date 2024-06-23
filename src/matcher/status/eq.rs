@@ -1,6 +1,6 @@
 use crate::validator::Validator;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct EqMatcher {
     pub(super) expected: i32,
 }

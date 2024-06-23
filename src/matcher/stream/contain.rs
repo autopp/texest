@@ -1,6 +1,6 @@
 use crate::validator::Validator;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ContainMatcher {
     pub(super) expected: Vec<u8>,
 }
