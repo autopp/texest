@@ -9,7 +9,7 @@ on:
 jobs:
   test-and-build:
     uses: ./.github/workflows/test.yml
-    if: "!startsWith(github.head_ref, 'release/') || github.event.pull_request.head.fork"
+    if: (!startsWith(github.head_ref, 'release/') || github.event.pull_request.head.repo.fork)
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
   teardown:
