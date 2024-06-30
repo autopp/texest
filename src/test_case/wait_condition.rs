@@ -14,7 +14,7 @@ pub enum WaitCondition {
     Sleep(SleepCondition),
     Http(HttpCondition),
     #[cfg(test)]
-    SuccessStub(indexmap::IndexMap<String, serde_yaml::Value>),
+    SuccessStub(indexmap::IndexMap<String, saphyr::Yaml>),
 }
 
 impl WaitCondition {
@@ -64,13 +64,13 @@ mod tests {
     use indexmap::{indexmap, IndexMap};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use serde_yaml::Value;
+    use saphyr::Yaml;
 
     #[rstest]
-    #[case("with sleep", "sleep", indexmap! { "duration" => Value::from("1s") }, Some(WaitCondition::Sleep(SleepCondition { duration: Duration::from_secs(1) })), vec![])]
+    #[case("with sleep", "sleep", indexmap! { "duration" => Yaml::String("1s".to_string()) }, Some(WaitCondition::Sleep(SleepCondition { duration: Duration::from_secs(1) })), vec![])]
     #[case("with http", "http", indexmap! {
-            "port" => Value::from(8080),
-            "path" => Value::from("/health"),
+            "port" => Yaml::Integer(8080),
+            "path" => Yaml::String("/health".to_string()),
         }, Some(WaitCondition::Http(HttpCondition {
             port: 8080,
             path: "/health".to_string(),
@@ -83,7 +83,7 @@ mod tests {
     fn parse(
         #[case] title: &str,
         #[case] name: &str,
-        #[case] params: IndexMap<&str, Value>,
+        #[case] params: IndexMap<&str, Yaml>,
         #[case] expected_value: Option<WaitCondition>,
         #[case] expected_violation: Vec<(&str, &str)>,
     ) {

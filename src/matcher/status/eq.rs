@@ -1,3 +1,5 @@
+use saphyr::Yaml;
+
 use crate::validator::Validator;
 
 #[derive(Debug, PartialEq)]
@@ -19,7 +21,7 @@ impl EqMatcher {
         ))
     }
 
-    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+    pub fn parse(v: &mut Validator, x: &Yaml) -> Option<Self> {
         v.must_be_uint(x).and_then(|expected| {
             i32::try_from(expected)
                 .map_err(|err| {
@@ -50,8 +52,6 @@ mod tests {
     }
 
     mod parse {
-        use serde_yaml::Value;
-
         use super::*;
         use crate::validator::testutil::new_validator;
         use pretty_assertions::assert_eq;
@@ -59,21 +59,17 @@ mod tests {
         #[test]
         fn success_case() {
             let (mut v, _) = new_validator();
-            let x = serde_yaml::to_value(1).unwrap();
+            let x = Yaml::Integer(1);
             let actual = EqMatcher::parse(&mut v, &x).unwrap();
 
             assert_eq!(EqMatcher { expected: 1 }, actual);
         }
 
         #[rstest]
-        #[case("with negative number", Value::from(-1), "should be uint, but is int")]
-        #[case("with over i32", Value::from(2_i64.pow(32)), "cannot treat 4294967296 as i32")]
-        #[case("with not int", Value::from("hello"), "should be uint, but is string")]
-        fn failure_cases(
-            #[case] title: &str,
-            #[case] given: Value,
-            #[case] expected_message: &str,
-        ) {
+        #[case("with negative number", Yaml::Integer(-1), "should be uint, but is int")]
+        #[case("with over i32", Yaml::Integer(2_i64.pow(32)), "cannot treat 4294967296 as i32")]
+        #[case("with not int", Yaml::String("hello".to_string()), "should be uint, but is string")]
+        fn failure_cases(#[case] title: &str, #[case] given: Yaml, #[case] expected_message: &str) {
             let (mut v, violation) = new_validator();
             let actual = EqMatcher::parse(&mut v, &given);
 

@@ -4,6 +4,7 @@ use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration}
 
 use futures::future::join_all;
 use indexmap::{indexmap, IndexMap};
+use saphyr::Yaml;
 
 use crate::{
     exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
@@ -13,7 +14,7 @@ use crate::{
 pub use self::wait_condition::WaitCondition;
 
 pub trait LifeCycleHook: Debug {
-    fn serialize(&self) -> (&str, serde_yaml::Value);
+    fn serialize(&self) -> (&str, Yaml);
 }
 
 pub trait SetupHook: LifeCycleHook {
@@ -313,7 +314,7 @@ fn run_stream_matchers(matchers: &[StreamMatcher], stream: &[u8]) -> Vec<String>
 #[cfg(test)]
 pub mod testutil {
     use indexmap::{indexmap, IndexMap};
-    use serde_yaml::Value;
+    use saphyr::Yaml;
 
     use crate::matcher::{StatusMatcher, StreamMatcher};
     use std::{cell::RefCell, rc::Rc, time::Duration};
@@ -355,8 +356,8 @@ pub mod testutil {
     }
 
     impl LifeCycleHook for TestHook {
-        fn serialize(&self) -> (&str, Value) {
-            ("test", Value::from(self.name))
+        fn serialize(&self) -> (&str, Yaml) {
+            ("test", Yaml::String(self.name.to_string()))
         }
     }
 
@@ -509,35 +510,34 @@ mod tests {
             use super::*;
             use pretty_assertions::assert_eq;
             use rstest::rstest;
-            use serde_yaml::Value;
 
             #[rstest]
             #[case("command is exit, no matchers",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are succeeded",
-                TestCaseTemplate{ processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![new_status_test_success(true)], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate{ processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![new_status_test_success(Yaml::Boolean(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, status matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![new_status_test_failure(1)], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], status_matchers: vec![new_status_test_failure(Yaml::Integer(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(0)]} })]
             #[case("command is exit, stdout matchers are succeeded",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stdout_matchers: vec![new_stream_test_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stdout_matchers: vec![new_stream_test_success(Yaml::Boolean(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stdout matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["echo", "-n", "hello"], stdout_matchers: vec![new_stream_test_failure(Yaml::Integer(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, stdin is given",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["cat"], stdin: "hello world", stdout_matchers: vec![new_stream_test_failure(Yaml::Integer(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello world".as_bytes())]} })]
             #[case("command is exit, stdout matchers are failed, env is given",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["printenv", "MESSAGE"], env: vec![("MESSAGE", "hello")], stdout_matchers: vec![new_stream_test_failure(Yaml::Integer(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDOUT_STRING) => vec![TestMatcher::failure_message("hello\n".as_bytes())]} })]
             #[case("command is exit, stderr matchers are succeeded",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stderr_matchers: vec![new_stream_test_success(Value::from(true))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["true"], stderr_matchers: vec![new_stream_test_success(Yaml::Boolean(true))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{} })]
             #[case("command is exit, stderr matchers are failed",
-                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![new_stream_test_failure(Value::from(1))], ..Default::default() } }, ..Default::default() },
+                TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "echo -n hi >&2"], stderr_matchers: vec![new_stream_test_failure(Yaml::Integer(1))], ..Default::default() } }, ..Default::default() },
                 TestResult { name: DEFAULT_NAME.to_string(), failures: indexmap!{format!("main:{}", *STDERR_STRING) => vec![TestMatcher::failure_message("hi".as_bytes())]} })]
             #[case("command is signaled",
                 TestCaseTemplate { processes: indexmap! { "main" => ProcessTemplate { command: vec!["bash", "-c", "kill -TERM $$"], ..Default::default() } }, ..Default::default() },
@@ -558,14 +558,14 @@ mod tests {
                             mode: ProcessMode::Background(BackgroundConfig {
                                 wait_condition: WaitCondition::Sleep(SleepCondition { duration: Duration::from_millis(50) })
                             }),
-                            status_matchers: vec![new_status_test_failure(true)],
-                            stdout_matchers: vec![new_stream_test_failure(Value::from(true))],
-                            stderr_matchers: vec![new_stream_test_failure(Value::from(true))],
+                            status_matchers: vec![new_status_test_failure(Yaml::Boolean(true))],
+                            stdout_matchers: vec![new_stream_test_failure(Yaml::Boolean(true))],
+                            stderr_matchers: vec![new_stream_test_failure(Yaml::Boolean(true))],
                             ..Default::default()
                         },
                         "main" => ProcessTemplate {
                             command: vec!["false"],
-                            status_matchers: vec![new_status_test_failure(true)],
+                            status_matchers: vec![new_status_test_failure(Yaml::Boolean(true))],
                             ..Default::default()
                         }
                     },
@@ -593,23 +593,23 @@ mod tests {
             #[rstest]
             #[case("file exists, matcher is succeeded",
                 "echo -n hello >{}",
-                vec![new_stream_test_success(Value::from(true))],
+                vec![new_stream_test_success(Yaml::Boolean(true))],
                 None)]
             #[case("file exists, matcher is failed",
                 "echo -n hello >{}",
-                vec![new_stream_test_failure(Value::from(true))],
+                vec![new_stream_test_failure(Yaml::Boolean(true))],
                 Some(vec![TestMatcher::failure_message("hello".as_bytes())]))]
             #[case("file dose not exist",
                 "rm -f {}",
-                vec![new_stream_test_failure(Value::from(true))],
+                vec![new_stream_test_failure(Yaml::Boolean(true))],
                 Some(vec!["dose not exist".to_string()]))]
             #[case("given is not file",
                 "mkdir -p {}",
-                vec![new_stream_test_failure(Value::from(true))],
+                vec![new_stream_test_failure(Yaml::Boolean(true))],
                 Some(vec!["is not file".to_string()]))]
             #[case("cannot read file",
                 "echo -n hello >{}; chmod 0200 {}",
-                vec![new_stream_test_failure(Value::from(true))],
+                vec![new_stream_test_failure(Yaml::Boolean(true))],
                 Some(vec!["cannot read file".to_string()]))]
             fn when_exec_succeeded_with_files_matcher(
                 #[case] title: &str,
@@ -656,25 +656,25 @@ mod tests {
 
             #[rstest]
             #[case("all hooks and assertions are succeeded",
-                new_status_test_success(Value::from(true)),
+                new_status_test_success(Yaml::Boolean(true)),
                 vec![("setup1", None), ("setup2", None)],
                 vec![("teardown1", None), ("teardown2", None)],
                 indexmap!{},
                 vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
             #[case("when assertion is failed, remaining hooks are executed",
-                new_status_test_failure(Value::from(true)),
+                new_status_test_failure(Yaml::Boolean(true)),
                 vec![("setup1", None), ("setup2", None)],
                 vec![("teardown1", None), ("teardown2", None)],
                 indexmap!{ format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(42)] },
                 vec![(Setup, "setup1"), (Setup, "setup2"), (Teardown, "teardown2"), (Teardown, "teardown1")])]
             #[case("when first setup hook is failed, target command and remaning hooks are not executed",
-                new_status_test_failure(Value::from(true)),
+                new_status_test_failure(Yaml::Boolean(true)),
                 vec![("setup1", Some("setup1 failed")), ("setup2", None)],
                 vec![("teardown1", None), ("teardown2", None)],
                 indexmap!{ SETUP_STRING.clone() => vec!["setup1 failed".to_string()] },
                 vec![(Setup, "setup1")])]
             #[case("when first teardown hook is failed, remaining hooks are executed",
-                new_status_test_failure(Value::from(true)),
+                new_status_test_failure(Yaml::Boolean(true)),
                 vec![("setup1", None), ("setup2", None)],
                 vec![("teardown1", None), ("teardown2", Some("teardown2 failed"))],
                 indexmap!{ format!("main:{}", *STATUS_STRING) => vec![TestMatcher::failure_message(42)], TEARDOWN_STRING.clone() => vec!["teardown2 failed".to_string()] },

@@ -93,7 +93,7 @@ mod tests {
         use indexmap::{indexmap, IndexMap};
         use pretty_assertions::assert_eq;
         use rstest::rstest;
-        use serde_yaml::Value;
+        use saphyr::Yaml;
 
         use crate::validator::testutil;
 
@@ -157,12 +157,12 @@ mod tests {
 
         #[rstest]
         #[case("with full valid params", indexmap! {
-            "port" => Value::from(8080),
-            "path" => Value::from("/health"),
-            "initial_delay" => Value::from("2s"),
-            "interval" => Value::from("3s"),
-            "max_retry" => Value::from(5),
-            "timeout" => Value::from("20s"),
+            "port" => Yaml::Integer(8080),
+            "path" => Yaml::String("/health".to_string()),
+            "initial_delay" => Yaml::String("2s".to_string()),
+            "interval" => Yaml::String("3s".to_string()),
+            "max_retry" => Yaml::Integer(5),
+            "timeout" => Yaml::String("20s".to_string()),
         }, Some(HttpCondition {
             port: 8080,
             path: "/health".to_string(),
@@ -172,8 +172,8 @@ mod tests {
             timeout: Duration::from_secs(20),
         }), vec![])]
         #[case("with minimum valid params", indexmap! {
-            "port" => Value::from(8080),
-            "path" => Value::from("/health"),
+            "port" => Yaml::Integer(8080),
+            "path" => Yaml::String("/health".to_string()),
         }, Some(HttpCondition {
             port: 8080,
             path: "/health".to_string(),
@@ -184,12 +184,12 @@ mod tests {
         }), vec![])]
         #[case("with missing reqired params", indexmap! {}, None, vec![("", "should have .port as uint"), ("", "should have .path as string")])]
         #[case("with invalid params", indexmap! {
-            "port" => Value::from(65536),
-            "path" => Value::from(true),
-            "initial_delay" => Value::from(true),
-            "interval" => Value::from(true),
-            "max_retry" => Value::from(true),
-            "timeout" => Value::from(true),
+            "port" => Yaml::Integer(65536),
+            "path" => Yaml::Boolean(true),
+            "initial_delay" => Yaml::Boolean(true),
+            "interval" => Yaml::Boolean(true),
+            "max_retry" => Yaml::Boolean(true),
+            "timeout" => Yaml::Boolean(true),
         }, None, vec![
             (".port", "should be in range of u16"),
             (".path", "should be string, but is bool"),
@@ -200,7 +200,7 @@ mod tests {
         ])]
         fn parse(
             #[case] title: &str,
-            #[case] params: IndexMap<&str, Value>,
+            #[case] params: IndexMap<&str, Yaml>,
             #[case] expected_value: Option<HttpCondition>,
             #[case] expected_violation: Vec<(&str, &str)>,
         ) {

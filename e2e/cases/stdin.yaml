@@ -30,9 +30,12 @@ tests:
                 question: "What is the answer to life, the universe and everything?"
             expect:
               stdout:
-                eq: |
-                  answer: 42
-                  question: What is the answer to life, the universe and everything?
+                eq:
+                  $yaml:
+                    answer: 42
+                    question: "What is the answer to life, the universe and everything?"
+    teeStdout: true
+    teeStderr: true
     expect:
       status:
         eq: 0

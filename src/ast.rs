@@ -1,32 +1,32 @@
 use indexmap::IndexMap;
-use serde_yaml::Value;
+use saphyr::Yaml;
 
 pub trait Ast {
     fn type_name(&self) -> String;
 }
 
-impl Ast for Value {
+impl Ast for Yaml {
     fn type_name(&self) -> String {
         match self {
-            Value::Null => "nil".to_string(),
-            Value::Bool(_) => "bool".to_string(),
-            Value::Number(n) => if n.is_u64() {
-                "uint"
-            } else if n.is_i64() {
-                "int"
-            } else {
-                "float"
+            Yaml::Null => "nil".to_string(),
+            Yaml::Boolean(_) => "bool".to_string(),
+            Yaml::Integer(n) => {
+                if *n >= 0 {
+                    "uint".to_string()
+                } else {
+                    "int".to_string()
+                }
             }
-            .to_string(),
-            Value::String(_) => "string".to_string(),
-            Value::Sequence(_) => "seq".to_string(),
-            Value::Mapping(_) => "map".to_string(),
-            Value::Tagged(t) => t.value.type_name(),
+            Yaml::Real(_) => "float".to_string(),
+            Yaml::String(_) => "string".to_string(),
+            Yaml::Array(_) => "seq".to_string(),
+            Yaml::Hash(_) => "map".to_string(),
+            _ => panic!("unsupported type: {:?}", self),
         }
     }
 }
 
-pub type Map<'a> = IndexMap<&'a str, &'a Value>;
+pub type Map<'a> = IndexMap<&'a str, &'a Yaml>;
 
 impl<'a> Ast for Map<'a> {
     fn type_name(&self) -> String {
@@ -36,12 +36,12 @@ impl<'a> Ast for Map<'a> {
 
 #[cfg(test)]
 pub mod testuitl {
-    use serde_yaml::{Mapping, Value};
+    use saphyr::{Hash, Yaml};
 
-    pub fn mapping(v: Vec<(&str, Value)>) -> Mapping {
-        let mut m = Mapping::new();
+    pub fn mapping(v: Vec<(&str, Yaml)>) -> Hash {
+        let mut m = Hash::new();
         v.iter().for_each(|(k, v)| {
-            m.insert(Value::String(k.to_string()), v.clone());
+            m.insert(Yaml::String(k.to_string()), v.clone());
         });
         m
     }

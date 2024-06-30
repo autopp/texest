@@ -1,3 +1,5 @@
+use saphyr::Yaml;
+
 use crate::validator::Validator;
 
 #[derive(Debug, PartialEq)]
@@ -27,7 +29,7 @@ impl ContainMatcher {
         ))
     }
 
-    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+    pub fn parse(v: &mut Validator, x: &Yaml) -> Option<Self> {
         v.must_be_string(x).map(|expected| Self {
             expected: expected.into(),
         })
@@ -62,7 +64,6 @@ mod tests {
     }
 
     mod parse {
-        use serde_yaml::Value;
 
         use super::*;
         use crate::validator::testutil::new_validator;
@@ -71,7 +72,7 @@ mod tests {
         #[test]
         fn success_case() {
             let (mut v, _) = new_validator();
-            let x = Value::from("hello");
+            let x = Yaml::String("hello".to_string());
             let actual = ContainMatcher::parse(&mut v, &x).unwrap();
 
             let expected = ContainMatcher {
@@ -81,12 +82,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case("with not string", Value::from(true), "should be string, but is bool")]
-        fn failure_cases(
-            #[case] title: &str,
-            #[case] given: Value,
-            #[case] expected_message: &str,
-        ) {
+        #[case(
+            "with not string",
+            Yaml::Boolean(true),
+            "should be string, but is bool"
+        )]
+        fn failure_cases(#[case] title: &str, #[case] given: Yaml, #[case] expected_message: &str) {
             let (mut v, violation) = new_validator();
             let actual = ContainMatcher::parse(&mut v, &given);
 

@@ -4,7 +4,7 @@ use indexmap::{indexmap, IndexMap};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use serde_yaml::Value;
+use saphyr::{Yaml, YamlLoader};
 
 use crate::{
     ast::Map,
@@ -48,15 +48,20 @@ impl Error {
 const DEFAULT_TIMEOUT: u64 = 10;
 static VAR_NAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap());
 
-pub fn parse(filename: &str, reader: impl std::io::Read) -> Result<TestCaseExprFile, Error> {
-    let ast = serde_yaml::from_reader(reader).map_err(|err| {
-        Error::without_violations(filename, format!("cannot parse {}: {}", filename, err))
+pub fn parse(filename: &str, mut reader: impl std::io::Read) -> Result<TestCaseExprFile, Error> {
+    let mut buf = String::new();
+    reader.read_to_string(&mut buf).map_err(|err| {
+        Error::without_violations(filename, format!("cannot read {}: {}", filename, err))
     })?;
+
+    let ast = &YamlLoader::load_from_str(&buf).map_err(|err| {
+        Error::without_violations(filename, format!("cannot parse {}: {}", filename, err))
+    })?[0];
 
     let mut v = Validator::new(filename);
 
     let test_case_exprs = v
-        .must_be_map(&ast)
+        .must_be_map(ast)
         .and_then(|root| {
             v.must_have_seq(&root, "tests", |v, tests| {
                 v.map_seq(tests, |v, test| {
@@ -194,7 +199,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         .unwrap_or_default();
     let stdin = v
         .may_have(m, "stdin", parse_expr)
-        .unwrap_or(Expr::Literal(Value::from("")));
+        .unwrap_or(Expr::Literal(Yaml::String("".to_string())));
     let env: Vec<(String, Expr)> = v
         .may_have_map(m, "env", |v, env| {
             env.into_iter()
@@ -246,7 +251,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
     }
 }
 
-fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
+fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
     if v.may_be_string(x).is_some() {
         return Expr::Literal(x.clone());
     }
@@ -263,7 +268,7 @@ fn parse_expr(v: &mut Validator, x: &Value) -> Expr {
                     let filename = v.must_have_string(&m, "filename").unwrap_or_default();
                     let contents = v
                         .must_have(&m, "contents", parse_expr)
-                        .unwrap_or_else(|| Expr::Literal(Value::from(false)));
+                        .unwrap_or_else(|| Expr::Literal(Yaml::Boolean(false)));
                     Expr::TmpFile(filename, Box::new(contents))
                 })
             }),
@@ -321,7 +326,7 @@ mod tests {
         use indexmap::indexmap;
         use pretty_assertions::assert_eq;
         use rstest::rstest;
-        use serde_yaml::Value;
+        use saphyr::Yaml;
 
         const FILENAME: &str = "test.yaml";
         fn parse_error(violations: Vec<Violation>) -> Result<TestCaseExprFile, Error> {
@@ -351,7 +356,7 @@ tests:
     - name: mytest
       command:
         - echo
-        - hello", vec![TestCaseExprTemplate{name: Some(literal_expr("mytest")), ..TestCaseExprTemplate::default()}])]
+        - hello", vec![TestCaseExprTemplate{name: Some(literal_expr(Yaml::String("mytest".to_string()))), ..TestCaseExprTemplate::default()}])]
         #[case("with command contains env var", "
 tests:
     - command:
@@ -360,7 +365,7 @@ tests:
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
                     command: vec![
-                        Expr::Literal(Value::from("echo".to_string())),
+                        Expr::Literal(Yaml::String("echo".to_string().to_string())),
                         Expr::EnvVar("MESSAGE".to_string(), None),
                     ],
                     ..Default::default()
@@ -405,8 +410,8 @@ tests:
       stdin: hello", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![Expr::Literal(Value::from("cat".to_string()))],
-                    stdin: literal_expr("hello"),
+                    command: vec![Expr::Literal(Yaml::String("cat".to_string().to_string()))],
+                    stdin: literal_expr(Yaml::String("hello".to_string())),
                     ..Default::default()
                 }
             ),
@@ -421,8 +426,8 @@ tests:
           message: hello", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![Expr::Literal(Value::from("cat".to_string()))],
-                    stdin: Expr::Yaml(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+                    command: vec![Expr::Literal(Yaml::String("cat".to_string().to_string()))],
+                    stdin: Expr::Yaml(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))),
                     ..Default::default()
                 }
             ),
@@ -437,8 +442,8 @@ tests:
           message: hello", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![Expr::Literal(Value::from("cat".to_string()))],
-                    stdin: Expr::Json(Value::from(mapping(vec![("message", Value::from("hello"))]))),
+                    command: vec![Expr::Literal(Yaml::String("cat".to_string().to_string()))],
+                    stdin: Expr::Json(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))),
                     ..Default::default()
                 }
             ),
@@ -455,7 +460,7 @@ tests:
           $env: FOO", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", env_var_expr("FOO"))],
+                    env: vec![("MESSAGE1", literal_expr(Yaml::String("hello".to_string()))), ("MESSAGE2", env_var_expr("FOO"))],
                     ..Default::default()
                 }
             ),
@@ -475,10 +480,10 @@ tests:
                 processes: ProcessesExprTemplate::Single(
                     ProcessExprTemplate {
                         command: vec![
-                            Expr::Literal(Value::from("cat".to_string())),
+                            Expr::Literal(Yaml::String("cat".to_string().to_string())),
                             Expr::TmpFile(
                                 "input.yaml".to_string(),
-                                Box::new(Expr::Yaml(Value::from(mapping(vec![("answer", Value::from(42))])))),
+                                Box::new(Expr::Yaml(Yaml::Hash(mapping(vec![("answer", Yaml::Integer(42))])))),
                             ),
                         ],
                         ..Default::default()
@@ -501,15 +506,15 @@ tests:
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("hello"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("hello".to_string())),
                     ],
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("world"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
                 },
@@ -532,16 +537,16 @@ tests:
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("hello"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("hello".to_string())),
                     ],
                     mode: ProcessModeExpr::Background(BackgroundConfigExpr { wait_condition: None }),
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("world"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
                 },
@@ -567,14 +572,14 @@ tests:
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("hello"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("hello".to_string())),
                     ],
                     mode: ProcessModeExpr::Background(
                         BackgroundConfigExpr {
                             wait_condition: Some(WaitConditionExpr {
                                 name: "success_stub".to_string(),
-                                params: indexmap! { "answer".to_string() => literal_expr(42) }
+                                params: indexmap! { "answer".to_string() => literal_expr(Yaml::Integer(42)) }
                             })
                         }
                     ),
@@ -582,8 +587,8 @@ tests:
                 },
                 "process2" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("world"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
                 },
@@ -613,26 +618,26 @@ tests:
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("hello"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("hello".to_string())),
                     ],
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
                     command: vec![
-                        literal_expr("echo"),
-                        literal_expr("world"),
+                        literal_expr(Yaml::String("echo".to_string())),
+                        literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
                 },
             }),
             processes_matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {
                 "process1" => ProcessMatchersExprTemplate {
-                    status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
+                    status_matcher_exprs: indexmap!{ "success" => literal_expr(Yaml::Boolean(true)) },
                     ..Default::default()
                 },
                 "process2" => ProcessMatchersExprTemplate {
-                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(Yaml::Boolean(true)) },
                     ..Default::default()
                 },
             }),
@@ -648,7 +653,7 @@ tests:
           success: true", vec![TestCaseExprTemplate {
             processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
-                    status_matcher_exprs: indexmap!{ "success" => literal_expr(true) },
+                    status_matcher_exprs: indexmap!{ "success" => literal_expr(Yaml::Boolean(true)) },
                     ..Default::default()
                 }
             ),
@@ -664,7 +669,7 @@ tests:
           be_empty: true", vec![TestCaseExprTemplate {
             processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
-                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    stdout_matcher_exprs: indexmap!{ "be_empty" => literal_expr(Yaml::Boolean(true)) },
                     ..Default::default()
                 }
             ),
@@ -680,7 +685,7 @@ tests:
           be_empty: true", vec![TestCaseExprTemplate {
             processes_matchers: ProcessesMatchersExprTemplate::Single(
                 ProcessMatchersExprTemplate {
-                    stderr_matcher_exprs: indexmap!{ "be_empty" => literal_expr(true) },
+                    stderr_matcher_exprs: indexmap!{ "be_empty" => literal_expr(Yaml::Boolean(true)) },
                     ..Default::default()
                 }
             ),
@@ -700,7 +705,7 @@ tests:
                     ..Default::default()
                 }
             ),
-            files_matchers: indexmap!{ "hello.txt" => indexmap!{ "be_empty" => literal_expr(true)} },
+            files_matchers: indexmap!{ "hello.txt" => indexmap!{ "be_empty" => literal_expr(Yaml::Boolean(true))} },
             ..Default::default()
         }])]
         fn success_case(
@@ -731,27 +736,27 @@ tests:
         #[case("when test command is empty", "tests: [{command: []}]", vec![("$.tests[0].command", "should not be empty")])]
         #[case("when multi processes is not map", "tests: [processes: true]", vec![("$.tests[0].processes", "should be map, but is bool")])]
         #[case("when multi processes is empty", "tests: [processes: {}]", vec![("$.tests[0].processes", "should not be empty")])]
-        #[case("when backgound is not map", "tests: [processes: { main: { command: [echo], background: 42 } }]", vec![("$.tests[0].processes.main.background", "should be map, but is uint")])]
-        #[case("when wait condition type is not string", "tests: [processes: { main: { command: [echo], background: { wait_for: { type: 42 } } } }]", vec![("$.tests[0].processes.main.background.wait_for.type", "should be string, but is uint")])]
-        #[case("when some process is not map", "tests: [processes: {proc1: true}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
-        #[case("when some process's command is empty", "tests: [processes: {proc1: {command: []}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
-        #[case("when backgroud is not map", "tests: [processes: {proc1: {command: [true], background: true}}]", vec![("$.tests[0].processes.proc1.background", "should be map, but is bool")])]
+        #[case("when backgound is not map", "tests: [{ processes: { main: { command: [echo], background: 42 } } }]", vec![("$.tests[0].processes.main.background", "should be map, but is uint")])]
+        #[case("when wait condition type is not string", "tests: [{ processes: { main: { command: [echo], background: { wait_for: { type: 42 } } } } }]", vec![("$.tests[0].processes.main.background.wait_for.type", "should be string, but is uint")])]
+        #[case("when some process is not map", "tests: [{processes: {proc1: true}}]", vec![("$.tests[0].processes.proc1", "should be map, but is bool")])]
+        #[case("when some process's command is empty", "tests: [{processes: {proc1: {command: []}}}]", vec![("$.tests[0].processes.proc1.command", "should not be empty")])]
+        #[case("when backgroud is not map", "tests: [{processes: {proc1: {command: [true], background: true}}}]", vec![("$.tests[0].processes.proc1.background", "should be map, but is bool")])]
         #[case("when test expect is not map", "tests: [{command: [echo], expect: 42}]", vec![("$.tests[0].expect", "should be map, but is uint")])]
         #[case("when test multi expect is not map", "tests: [{command: [echo], expect: {processes: 42}}]", vec![("$.tests[0].expect.processes", "should be map, but is uint")])]
         #[case("when multiple process givenm but expect is single", "tests: [{processes: {process1: {command: [echo]}}, expect: {stdin: {eq: 0}}}]", vec![("$.tests[0].expect", "expect should be multiple mode when multiple processes are given")])]
         #[case("when test env is not map", "tests: [{command: [echo], env: 42}]", vec![("$.tests[0].env", "should be map, but is uint")])]
-        #[case("when test env contains not string key", "tests: [{command: [echo], env: {true: hello}}]", vec![("$.tests[0].env", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when test env contains not string key", "tests: [{command: [echo], env: {true: hello}}]", vec![("$.tests[0].env", "should be string keyed map, but contains Boolean(true)")])]
         #[case("when test env contains empty name", "tests: [{command: [echo], env: {'': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]
         #[case("when test env contains empty name", "tests: [{command: [echo], env: {'1MESSAGE': hello}}]", vec![("$.tests[0].env", "should have valid env var name (^[a-zA-Z_][a-zA-Z0-9_]*$)")])]
         #[case("when test status matcher is not map", "tests: [{command: [echo], expect: {status: 42}}]", vec![("$.tests[0].expect.status", "should be map, but is uint")])]
-        #[case("when test status matcher contains not string key", "tests: [{command: [echo], expect: {status: {true: 42}}}]", vec![("$.tests[0].expect.status", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when test status matcher contains not string key", "tests: [{command: [echo], expect: {status: {true: 42}}}]", vec![("$.tests[0].expect.status", "should be string keyed map, but contains Boolean(true)")])]
         #[case("when test stdout matcher is not map", "tests: [{command: [echo], expect: {stdout: 42}}]", vec![("$.tests[0].expect.stdout", "should be map, but is uint")])]
-        #[case("when test stdout matcher contains not string key", "tests: [{command: [echo], expect: {stdout: {true: 42}}}]", vec![("$.tests[0].expect.stdout", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when test stdout matcher contains not string key", "tests: [{command: [echo], expect: {stdout: {true: 42}}}]", vec![("$.tests[0].expect.stdout", "should be string keyed map, but contains Boolean(true)")])]
         #[case("when test stderr matcher is not map", "tests: [{command: [echo], expect: {stderr: 42}}]", vec![("$.tests[0].expect.stderr", "should be map, but is uint")])]
-        #[case("when test stderr matcher contains not string key", "tests: [{command: [echo], expect: {stderr: {true: 42}}}]", vec![("$.tests[0].expect.stderr", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when test stderr matcher contains not string key", "tests: [{command: [echo], expect: {stderr: {true: 42}}}]", vec![("$.tests[0].expect.stderr", "should be string keyed map, but contains Boolean(true)")])]
         #[case("when test files matcher is not map", "tests: [{command: [echo], expect: {files: 42}}]", vec![("$.tests[0].expect.files", "should be map, but is uint")])]
         #[case("when test file matcher is not map", "tests: [{command: [echo], expect: {files: {hello: 42}}}]", vec![("$.tests[0].expect.files.hello", "should be map, but is uint")])]
-        #[case("when test file matcher contains not string key", "tests: [{command: [echo], expect: {files: {hello: {true: 42}}}}]", vec![("$.tests[0].expect.files.hello", "should be string keyed map, but contains Bool(true)")])]
+        #[case("when test file matcher contains not string key", "tests: [{command: [echo], expect: {files: {hello: {true: 42}}}}]", vec![("$.tests[0].expect.files.hello", "should be string keyed map, but contains Boolean(true)")])]
         #[case("when $tmp_file is not map", "tests: [{command: [cat, {$tmp_file: 42}]}]", vec![("$.tests[0].command[1].$tmp_file", "should be map, but is uint")])]
         #[case("when $tmp_file dosen't have filename", "tests: [{command: [cat, {$tmp_file: {contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .filename as string")])]
         #[case("when $tmp_file has filename as not string", "tests: [{command: [cat, {$tmp_file: {filename: 42, contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file.filename", "should be string, but is uint")])]
