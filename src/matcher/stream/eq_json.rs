@@ -13,7 +13,7 @@ impl EqJsonMatcher {
     pub fn matches(&self, actual: &[u8]) -> Result<(bool, String), String> {
         let actual_str = String::from_utf8(actual.to_vec()).map_err(|_err| {
             format!(
-                "should be valid JSON string, but got \"{}\"",
+                "should be valid utf8 string, but got \"{}\"",
                 String::from_utf8_lossy(actual)
             )
         })?;
@@ -106,6 +106,19 @@ mod tests {
         assert_eq!(
             Ok((expected_matched, expected_message.to_string())),
             m.matches(given.as_bytes()),
+        );
+    }
+
+    #[test]
+    fn matches_with_not_utf8() {
+        let original = r#"{"message": "hello", "nums": [1, 2]}"#;
+        let m = EqJsonMatcher {
+            original: original.into(),
+            expected: serde_json::from_str(original).unwrap(),
+        };
+        assert_eq!(
+            Err("should be valid utf8 string, but got \"{\"message\": �}\"".to_string()),
+            m.matches(b"{\"message\": \xFF}"),
         );
     }
 
