@@ -94,6 +94,7 @@ impl TestResult {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct TestResultSummary {
     pub results: Vec<TestResult>,
 }

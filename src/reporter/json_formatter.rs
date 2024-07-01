@@ -97,7 +97,7 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        reporter::ColorMarker,
+        reporter::{ColorMarker, Formatter},
         test_case::{testutil::TestCaseTemplate, TestResult},
     };
 
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn on_run_start() {
-        let mut f = JsonFormatter {};
+        let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
 
         let r = f.on_run_start(&mut buf, &ColorMarker::new(false));
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn on_test_start() {
-        let mut f = JsonFormatter {};
+        let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
         let test_case = TestCaseTemplate {
             ..Default::default()
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn on_test_case_end() {
-        let mut f = JsonFormatter {};
+        let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
         let test_result = TestResult {
             name: "test".to_string(),
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn on_run_end() {
-        let mut f = JsonFormatter {};
+        let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
         let test_result = TestResultSummary {
             results: vec![
