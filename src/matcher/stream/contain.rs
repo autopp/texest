@@ -69,7 +69,7 @@ mod tests {
         use crate::validator::testutil::new_validator;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn success_case() {
             let (mut v, _) = new_validator();
             let x = Yaml::String("hello".to_string());

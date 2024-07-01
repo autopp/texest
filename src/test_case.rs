@@ -736,7 +736,7 @@ mod tests {
                 );
             }
 
-            #[test]
+            #[rstest]
             fn when_exec_failed() {
                 let given = TestCaseTemplate {
                     processes: indexmap! { "main" => ProcessTemplate { command: vec!["_unknown"], ..Default::default() } },

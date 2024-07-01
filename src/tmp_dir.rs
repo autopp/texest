@@ -47,12 +47,13 @@ pub mod testutil {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
     mod create {
         use super::*;
         use pretty_assertions::assert_ne;
 
-        #[test]
+        #[rstest]
         fn the_created_dir_exists_only_alive_while_the_factory_is_alive() {
             let tmp_dir = {
                 let mut tf = TmpDirFactory::new();
@@ -66,7 +67,7 @@ mod tests {
             assert!(!tmp_dir.exists());
         }
 
-        #[test]
+        #[rstest]
         fn new_dir_is_created_every_time() {
             let mut tf = TmpDirFactory::new();
             let tmp_dir1 = tf.create().unwrap().to_path_buf();

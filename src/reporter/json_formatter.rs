@@ -94,6 +94,7 @@ impl JsonFormatter {
 #[cfg(test)]
 mod tests {
     use indexmap::indexmap;
+    use rstest::rstest;
     use serde_json::json;
 
     use crate::{
@@ -104,7 +105,7 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    #[test]
+    #[rstest]
     fn on_run_start() {
         let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
@@ -115,7 +116,7 @@ mod tests {
         assert!(buf.is_empty());
     }
 
-    #[test]
+    #[rstest]
     fn on_test_start() {
         let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
@@ -130,7 +131,7 @@ mod tests {
         assert!(buf.is_empty());
     }
 
-    #[test]
+    #[rstest]
     fn on_test_case_end() {
         let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
@@ -145,7 +146,7 @@ mod tests {
         assert!(buf.is_empty());
     }
 
-    #[test]
+    #[rstest]
     fn on_run_end() {
         let mut f = Formatter::new_json();
         let mut buf = Vec::<u8>::new();
