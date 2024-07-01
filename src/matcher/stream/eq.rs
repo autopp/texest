@@ -1,3 +1,4 @@
+use saphyr::Yaml;
 use similar::TextDiff;
 
 use crate::validator::Validator;
@@ -35,7 +36,7 @@ impl EqMatcher {
         }
     }
 
-    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+    pub fn parse(v: &mut Validator, x: &Yaml) -> Option<Self> {
         v.must_be_string(x).map(|expected| Self {
             expected: expected.into(),
         })
@@ -66,8 +67,6 @@ mod tests {
     }
 
     mod parse {
-        use serde_yaml::Value;
-
         use super::*;
         use crate::validator::testutil::new_validator;
         use pretty_assertions::assert_eq;
@@ -75,7 +74,7 @@ mod tests {
         #[test]
         fn success_case() {
             let (mut v, _) = new_validator();
-            let x = serde_yaml::to_value("hello").unwrap();
+            let x = Yaml::String("hello".to_string());
             let actual = EqMatcher::parse(&mut v, &x).unwrap();
             let expected = EqMatcher {
                 expected: "hello".into(),
@@ -85,12 +84,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case("with not string", Value::from(true), "should be string, but is bool")]
-        fn failure_cases(
-            #[case] title: &str,
-            #[case] given: Value,
-            #[case] expected_message: &str,
-        ) {
+        #[case(
+            "with not string",
+            Yaml::Boolean(true),
+            "should be string, but is bool"
+        )]
+        fn failure_cases(#[case] title: &str, #[case] given: Yaml, #[case] expected_message: &str) {
             let (mut v, violation) = new_validator();
             let actual = EqMatcher::parse(&mut v, &given);
 

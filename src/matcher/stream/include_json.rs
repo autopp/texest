@@ -1,4 +1,5 @@
 use assert_json_diff::{assert_json_matches_no_panic, Config};
+use saphyr::Yaml;
 
 use crate::validator::Validator;
 
@@ -41,7 +42,7 @@ impl IncludeJsonMatcher {
         }
     }
 
-    pub fn parse(v: &mut Validator, x: &serde_yaml::Value) -> Option<Self> {
+    pub fn parse(v: &mut Validator, x: &Yaml) -> Option<Self> {
         v.must_be_string(x)
             .and_then(|original| match serde_json::from_str(&original) {
                 Ok(expected) => Some(Self { expected, original }),
@@ -104,8 +105,6 @@ mod tests {
     }
 
     mod parse {
-        use serde_yaml::Value;
-
         use super::*;
         use crate::validator::testutil::new_validator;
         use pretty_assertions::assert_eq;
@@ -114,7 +113,7 @@ mod tests {
         fn success_case() {
             let (mut v, _) = new_validator();
             let original = r#"{"message": "hello"}"#;
-            let x = serde_yaml::to_value(original).unwrap();
+            let x = Yaml::String(original.to_string());
             let actual = IncludeJsonMatcher::parse(&mut v, &x).unwrap();
 
             let mut m = serde_json::Map::new();
@@ -130,17 +129,17 @@ mod tests {
         }
 
         #[rstest]
-        #[case("with not string", Value::from(true), "should be string, but is bool")]
+        #[case(
+            "with not string",
+            Yaml::Boolean(true),
+            "should be string, but is bool"
+        )]
         #[case(
             "with not valid JSON string",
-            Value::from(r#"{"message":"#),
+            Yaml::String(r#"{"message":"#.to_string()),
             r#"should be valid JSON string, but got "{"message":""#
         )]
-        fn failure_cases(
-            #[case] title: &str,
-            #[case] given: Value,
-            #[case] expected_message: &str,
-        ) {
+        fn failure_cases(#[case] title: &str, #[case] given: Yaml, #[case] expected_message: &str) {
             let (mut v, violation) = new_validator();
             let actual = IncludeJsonMatcher::parse(&mut v, &given);
 

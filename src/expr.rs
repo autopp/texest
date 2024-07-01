@@ -1,7 +1,7 @@
 use std::{os::unix::ffi::OsStrExt, path::PathBuf};
 
 use once_cell::sync::OnceCell;
-use serde_yaml::Value;
+use saphyr::{Hash, Yaml, YamlEmitter};
 
 use crate::{
     test_case::{LifeCycleHook, SetupHook},
@@ -10,10 +10,10 @@ use crate::{
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
-    Literal(Value),
+    Literal(Yaml),
     EnvVar(String, Option<String>),
-    Yaml(Value),
-    Json(Value),
+    Yaml(Yaml),
+    Json(Yaml),
     TmpFile(String, Box<Expr>),
 }
 
@@ -24,7 +24,7 @@ pub struct Context<'a, T: TmpDirSupplier> {
 
 #[derive(Debug, PartialEq)]
 pub struct EvalOutput {
-    pub value: Value,
+    pub value: Yaml,
     pub setup_hook: Option<Box<dyn SetupHook>>,
 }
 
@@ -35,11 +35,24 @@ pub struct SetupTmpFileHook {
 }
 
 impl LifeCycleHook for SetupTmpFileHook {
-    fn serialize(&self) -> (&str, serde_yaml::Value) {
-        let mut map = serde_yaml::Mapping::new();
-        map.insert("path".into(), self.path.as_os_str().as_bytes().into());
-        map.insert("contents".into(), self.contents.clone().into());
-        ("setup_tmp_file", serde_yaml::to_value(map).unwrap())
+    fn serialize(&self) -> (&str, Yaml) {
+        let mut map = Hash::new();
+        map.insert(
+            Yaml::String("path".to_string()),
+            Yaml::Array(
+                self.path
+                    .as_os_str()
+                    .as_bytes()
+                    .iter()
+                    .map(|n| Yaml::Integer(*n as i64))
+                    .collect::<Vec<_>>(),
+            ),
+        );
+        map.insert(
+            Yaml::String("contents".to_string()),
+            Yaml::String(self.contents.clone()),
+        );
+        ("setup_tmp_file", Yaml::Hash(map))
     }
 }
 
@@ -70,22 +83,27 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
                 setup_hook: None,
             }),
             Expr::EnvVar(name, default) => std::env::var_os(name)
-                .map(|value| Value::from(value.to_string_lossy()))
-                .or_else(|| default.clone().map(Value::from))
+                .map(|value| Yaml::String(value.to_string_lossy().to_string()))
+                .or_else(|| default.clone().map(Yaml::String))
                 .map(|value| EvalOutput {
                     value,
                     setup_hook: None,
                 })
                 .ok_or_else(|| format!("env var {} is not defined", name)),
-            Expr::Yaml(v) => serde_yaml::to_string(v)
-                .map(|yaml| EvalOutput {
-                    value: Value::from(yaml),
-                    setup_hook: None,
-                })
-                .map_err(|err| err.to_string()),
-            Expr::Json(v) => serde_json::to_string(v)
+            Expr::Yaml(v) => {
+                let mut buf = String::new();
+                let mut emitter = YamlEmitter::new(&mut buf);
+                emitter
+                    .dump(v)
+                    .map(|_| EvalOutput {
+                        value: Yaml::String(buf),
+                        setup_hook: None,
+                    })
+                    .map_err(|err| err.to_string())
+            }
+            Expr::Json(v) => serde_json::to_string(&to_json_value(v))
                 .map(|json| EvalOutput {
-                    value: Value::from(json),
+                    value: Yaml::String(json),
                     setup_hook: None,
                 })
                 .map_err(|err| err.to_string()),
@@ -99,7 +117,7 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
                             let path = tmp_dir_path.join(filename);
 
                             EvalOutput {
-                                value: path.to_string_lossy().into(),
+                                value: Yaml::String(path.to_string_lossy().to_string()),
                                 setup_hook: Some(Box::new(SetupTmpFileHook {
                                     path,
                                     contents: contents.to_string(),
@@ -120,14 +138,35 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
     }
 }
 
+// FIXME: too naive implementation
+fn to_json_value(yaml: &Yaml) -> serde_json::Value {
+    match yaml {
+        Yaml::Null => serde_json::Value::Null,
+        Yaml::Boolean(b) => serde_json::Value::Bool(*b),
+        Yaml::Integer(n) => serde_json::Value::Number(serde_json::Number::from(*n)),
+        Yaml::Real(n) => serde_json::Value::Number(
+            serde_json::Number::from_f64(n.parse().expect("failed to parse float"))
+                .expect("failed to convert to f64"),
+        ),
+        Yaml::String(s) => serde_json::Value::String(s.clone()),
+        Yaml::Array(a) => serde_json::Value::Array(a.iter().map(to_json_value).collect()),
+        Yaml::Hash(h) => serde_json::Value::Object(
+            h.iter()
+                .map(|(k, v)| (k.as_str().unwrap().to_string(), to_json_value(v)))
+                .collect(),
+        ),
+        _ => panic!("unsupported type: {:?}", yaml),
+    }
+}
+
 #[cfg(test)]
 pub mod testutil {
-    use serde_yaml::Value;
+    use saphyr::Yaml;
 
     use super::Expr;
 
-    pub fn literal_expr(value: impl Into<Value>) -> Expr {
-        Expr::Literal(value.into())
+    pub fn literal_expr(value: Yaml) -> Expr {
+        Expr::Literal(value)
     }
 
     pub fn env_var_expr(name: impl Into<String>) -> Expr {
@@ -155,23 +194,23 @@ mod tests {
 
         #[rstest]
         #[case("literal",
-            Expr::Literal(Value::from(true)),
-            Ok(EvalOutput { value: Value::from(true), setup_hook: None }))]
+            Expr::Literal(Yaml::Boolean(true)),
+            Ok(EvalOutput { value: Yaml::Boolean(true), setup_hook: None }))]
         #[case("defined env var",
             Expr::EnvVar(ENV_VAR_NAME.to_string(), None),
-            Ok(EvalOutput { value: Value::from(ENV_VAR_VALUE), setup_hook: None }))]
+            Ok(EvalOutput { value: Yaml::String(ENV_VAR_VALUE.to_string()), setup_hook: None }))]
         #[case("undefined env var with default value",
             Expr::EnvVar("UNDEFINED_VAR".to_string(), Some("default value".to_string())),
-            Ok(EvalOutput { value: Value::from("default value".to_string()), setup_hook: None }))]
+            Ok(EvalOutput { value: Yaml::String("default value".to_string()), setup_hook: None }))]
         #[case("undefined env var without default value",
             Expr::EnvVar("UNDEFINED_VAR".to_string(), None),
             Err("env var UNDEFINED_VAR is not defined".to_string()))]
         #[case("yaml",
-            Expr::Yaml(Value::from(mapping(vec![("x", Value::from(true))]))),
-            Ok(EvalOutput { value: Value::from("x: true\n"), setup_hook: None }))]
+            Expr::Yaml(Yaml::Hash(mapping(vec![("x", Yaml::Boolean(true))]))),
+            Ok(EvalOutput { value: Yaml::String("---\nx: true".to_string()), setup_hook: None }))]
         #[case("json",
-            Expr::Json(Value::from(mapping(vec![("x", Value::from(true))]))),
-            Ok(EvalOutput { value: Value::from("{\"x\":true}"), setup_hook: None }))]
+            Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Boolean(true))]))),
+            Ok(EvalOutput { value: Yaml::String("{\"x\":true}".to_string()), setup_hook: None }))]
         fn eval_expr(
             #[case] title: &str,
             #[case] expr: Expr,
@@ -199,11 +238,11 @@ mod tests {
 
             let expr = Expr::TmpFile(
                 filename.to_string(),
-                Box::new(Expr::Literal(Value::from("hello world"))),
+                Box::new(Expr::Literal(Yaml::String("hello world".to_string()))),
             );
 
             let actual = ctx.eval_expr(&expr).unwrap();
-            assert!(actual.value.is_string());
+            assert!(actual.value.as_str().is_some());
 
             let actual_path = PathBuf::from(actual.value.as_str().unwrap());
             assert_eq!(tmp_dir_path.join(filename), actual_path);
@@ -229,7 +268,7 @@ mod tests {
 
             let expr = Expr::TmpFile(
                 filename.to_string(),
-                Box::new(Expr::Literal(Value::from(true))),
+                Box::new(Expr::Literal(Yaml::Boolean(true))),
             );
             let actual = ctx.eval_expr(&expr);
 

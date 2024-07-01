@@ -31,7 +31,7 @@ mod tests {
         use once_cell::sync::Lazy;
         use pretty_assertions::assert_eq;
         use rstest::rstest;
-        use serde_yaml::Value;
+        use saphyr::Yaml;
 
         #[tokio::test]
         async fn wait() {
@@ -49,8 +49,8 @@ mod tests {
             assert!(elapsed >= Duration::from_millis(50));
         }
 
-        static VALID_DURATION: Lazy<Value> = Lazy::new(|| Value::from("2s"));
-        static INVALID_DURATION: Lazy<Value> = Lazy::new(|| Value::from(true));
+        static VALID_DURATION: Lazy<Yaml> = Lazy::new(|| Yaml::String("2s".to_string()));
+        static INVALID_DURATION: Lazy<Yaml> = Lazy::new(|| Yaml::Boolean(true));
 
         #[rstest]
         #[case("with valid duration", indexmap! { "duration" => &*VALID_DURATION }, Some(SleepCondition { duration: Duration::from_secs(2) }), vec![])]

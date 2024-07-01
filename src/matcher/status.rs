@@ -2,7 +2,7 @@ mod eq;
 use std::fmt::Debug;
 
 use eq::EqMatcher;
-use serde_yaml::Value;
+use saphyr::Yaml;
 
 #[derive(Debug, PartialEq)]
 pub enum StatusMatcher {
@@ -20,7 +20,7 @@ impl StatusMatcher {
         }
     }
 
-    pub fn parse(v: &mut super::Validator, name: &str, param: &Value) -> Option<Self> {
+    pub fn parse(v: &mut super::Validator, name: &str, param: &Yaml) -> Option<Self> {
         #[cfg(test)]
         if let Some(m) = super::testutil::parse_test_matcher(v, name, param) {
             return m.map(StatusMatcher::Test);
@@ -42,12 +42,12 @@ pub mod testutil {
 
     use super::*;
 
-    pub fn new_status_test_success(param: impl Into<Value>) -> StatusMatcher {
-        StatusMatcher::Test(TestMatcher::new_success(param.into()))
+    pub fn new_status_test_success(param: Yaml) -> StatusMatcher {
+        StatusMatcher::Test(TestMatcher::new_success(param))
     }
 
-    pub fn new_status_test_failure(param: impl Into<Value>) -> StatusMatcher {
-        StatusMatcher::Test(TestMatcher::new_failure(param.into()))
+    pub fn new_status_test_failure(param: Yaml) -> StatusMatcher {
+        StatusMatcher::Test(TestMatcher::new_failure(param))
     }
 }
 
@@ -58,14 +58,15 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
+    use saphyr::Yaml;
 
     #[rstest]
-    #[case("with eq", "eq", Value::from(1), Some(StatusMatcher::Eq(eq::EqMatcher { expected: 1 })), vec![])]
-    #[case("with unknown name", "unknown", Value::from(true), None, vec![("", "status matcher \"unknown\" is not defined")])]
+    #[case("with eq", "eq", Yaml::Integer(1), Some(StatusMatcher::Eq(eq::EqMatcher { expected: 1 })), vec![])]
+    #[case("with unknown name", "unknown", Yaml::Boolean(true), None, vec![("", "status matcher \"unknown\" is not defined")])]
     fn parse(
         #[case] title: &str,
         #[case] name: &str,
-        #[case] param: Value,
+        #[case] param: Yaml,
         #[case] expected_value: Option<StatusMatcher>,
         #[case] expected_violation: Vec<(&str, &str)>,
     ) {

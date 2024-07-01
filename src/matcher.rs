@@ -10,7 +10,7 @@ pub use stream::StreamMatcher;
 pub mod testutil {
     use std::fmt::Debug;
 
-    use serde_yaml::Value;
+    use saphyr::Yaml;
 
     use crate::validator::Validator;
 
@@ -29,7 +29,7 @@ pub mod testutil {
     #[derive(Debug, PartialEq)]
     pub struct TestMatcher {
         pub kind: Kind,
-        pub param: Value,
+        pub param: Yaml,
     }
 
     impl TestMatcher {
@@ -41,21 +41,21 @@ pub mod testutil {
             }
         }
 
-        pub fn new_success(param: Value) -> Self {
+        pub fn new_success(param: Yaml) -> Self {
             Self {
                 kind: Kind::Success,
                 param,
             }
         }
 
-        pub fn new_failure(param: Value) -> Self {
+        pub fn new_failure(param: Yaml) -> Self {
             Self {
                 kind: Kind::Failure,
                 param,
             }
         }
 
-        pub fn new_error(param: Value) -> Self {
+        pub fn new_error(param: Yaml) -> Self {
             Self {
                 kind: Kind::Error,
                 param,
@@ -83,7 +83,7 @@ pub mod testutil {
     pub fn parse_test_matcher(
         v: &mut Validator,
         name: &str,
-        param: &serde_yaml::Value,
+        param: &Yaml,
     ) -> Option<Option<TestMatcher>> {
         v.in_field(name, |v| match name {
             TEST_SUCCESS_NAME => Some(Some(TestMatcher::new_success(param.clone()))),

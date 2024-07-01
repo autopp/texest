@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use indexmap::{indexmap, IndexMap};
-use serde_yaml::Value;
+use saphyr::Yaml;
 
 use crate::{
     expr::{Context, EvalOutput, Expr},
@@ -235,7 +235,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     }
 }
 
-fn eval_matcher_exprs<T, TS: TmpDirSupplier, F: Fn(&mut Validator, &str, &Value) -> Option<T>>(
+fn eval_matcher_exprs<T, TS: TmpDirSupplier, F: Fn(&mut Validator, &str, &Yaml) -> Option<T>>(
     v: &mut Validator,
     ctx: &mut Context<'_, TS>,
     subject: &str,
@@ -335,7 +335,7 @@ fn eval_process_expr<T: TmpDirSupplier>(
                     wait_condition
                         .as_ref()
                         .and_then(|wait_condition| {
-                            let params: Option<IndexMap<&String, Value>> = wait_condition
+                            let params: Option<IndexMap<&String, Yaml>> = wait_condition
                                 .params
                                 .iter()
                                 .map(|(k, expr)| match ctx.eval_expr(expr) {
@@ -391,6 +391,7 @@ pub mod testutil {
 
     use indexmap::indexmap;
     use indexmap::IndexMap;
+    use saphyr::Yaml;
 
     use crate::expr::Expr;
 
@@ -435,7 +436,7 @@ pub mod testutil {
         fn default() -> Self {
             Self {
                 command: TestCaseExprTemplate::default_command(),
-                stdin: literal_expr(""),
+                stdin: literal_expr(Yaml::String("".to_string())),
                 env: vec![],
                 timeout: 10,
                 mode: ProcessModeExpr::Foreground,
@@ -537,7 +538,10 @@ pub mod testutil {
         pub const DEFAULT_PATH: &'static str = "$.tests[0]";
 
         pub fn default_command() -> Vec<Expr> {
-            vec![literal_expr("echo"), literal_expr("hello")]
+            vec![
+                literal_expr(Yaml::String("echo".to_string())),
+                literal_expr(Yaml::String("hello".to_string())),
+            ]
         }
 
         pub fn build(self) -> TestCaseExpr {
@@ -600,7 +604,6 @@ mod tests {
         use indexmap::indexmap;
         use pretty_assertions::assert_eq;
         use rstest::rstest;
-        use serde_yaml::Value;
 
         fn violation(path: &str, message: &str) -> Violation {
             Violation {
@@ -635,7 +638,7 @@ mod tests {
         }])]
         #[case("with name",
             TestCaseExprTemplate {
-                name: Some(literal_expr("mytest")),
+                name: Some(literal_expr(Yaml::String("mytest".to_string()))),
                 ..Default::default()
             },
             vec![
@@ -670,7 +673,7 @@ mod tests {
                         mode: ProcessModeExpr::Background(BackgroundConfigExpr {
                             wait_condition: Some(WaitConditionExpr {
                                 name: "success_stub".to_string(),
-                                params: indexmap! { "answer".to_string() => literal_expr(42) }
+                                params: indexmap! { "answer".to_string() => literal_expr(Yaml::Integer(42)) }
                             }),
                         }),
                         ..Default::default()
@@ -691,7 +694,7 @@ mod tests {
                             env: vec![],
                             timeout: Duration::from_secs(10),
                             mode: ProcessMode::Background(BackgroundConfig {
-                                wait_condition: WaitCondition::SuccessStub(indexmap! { "answer".to_string() => Value::from(42) }),
+                                wait_condition: WaitCondition::SuccessStub(indexmap! { "answer".to_string() => Yaml::Integer(42) }),
                             }),
                             tee_stdout: false,
                             tee_stderr: false,
@@ -721,7 +724,7 @@ mod tests {
         #[case("with stdin case",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    stdin: literal_expr("hello"),
+                    stdin: literal_expr(Yaml::String("hello".to_string())),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -754,7 +757,7 @@ mod tests {
         #[case("with env case",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    env: vec![("MESSAGE1", literal_expr("hello")), ("MESSAGE2", literal_expr("world"))],
+                    env: vec![("MESSAGE1", literal_expr(Yaml::String("hello".to_string()))), ("MESSAGE2", literal_expr(Yaml::String("world".to_string())))],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -788,7 +791,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{
-                        TEST_SUCCESS_NAME => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -808,7 +811,7 @@ mod tests {
                             mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
-                            status_matchers: vec!(new_status_test_success(true)),
+                            status_matchers: vec!(new_status_test_success(Yaml::Boolean(true))),
                             stdout_matchers: vec![],
                             stderr_matchers: vec![],
                         }
@@ -823,7 +826,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap!{
-                        TEST_SUCCESS_NAME => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -844,7 +847,7 @@ mod tests {
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
-                            stdout_matchers: vec![new_stream_test_success(Value::from(true))],
+                            stdout_matchers: vec![new_stream_test_success(Yaml::Boolean(true))],
                             stderr_matchers: vec![],
                         }
                     },
@@ -858,7 +861,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap! {
-                        TEST_SUCCESS_NAME => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -880,7 +883,7 @@ mod tests {
                             tee_stderr: false,
                             status_matchers: vec![],
                             stdout_matchers: vec![],
-                            stderr_matchers: vec![new_stream_test_success(Value::from(true))],
+                            stderr_matchers: vec![new_stream_test_success(Yaml::Boolean(true))],
                         }
                     },
                     files_matchers: indexmap! {},
@@ -896,7 +899,7 @@ mod tests {
                 }),
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
-                        TEST_SUCCESS_NAME => literal_expr(true),
+                        TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                 },
                 ..Default::default()
@@ -921,7 +924,7 @@ mod tests {
                         }
                     },
                     files_matchers: indexmap! {
-                        "/tmp/output.txt".to_string() => vec![new_stream_test_success(Value::from(true))],
+                        "/tmp/output.txt".to_string() => vec![new_stream_test_success(Yaml::Boolean(true))],
                     },
                     setup_hooks: vec![],
                     teardown_hooks: vec![],
@@ -948,11 +951,14 @@ mod tests {
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
 
             let given = TestCaseExprTemplate {
-                name: Some(literal_expr("test")),
+                name: Some(literal_expr(Yaml::String("test".to_string()))),
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
                     command: vec![
-                        literal_expr("cat"),
-                        Expr::TmpFile("input.txt".to_string(), Box::new(literal_expr("hello"))),
+                        literal_expr(Yaml::String("cat".to_string())),
+                        Expr::TmpFile(
+                            "input.txt".to_string(),
+                            Box::new(literal_expr(Yaml::String("hello".to_string()))),
+                        ),
                     ],
                     ..Default::default()
                 }),
@@ -1007,7 +1013,7 @@ mod tests {
         )]
         #[case("with not string name",
             TestCaseExprTemplate {
-                name: Some(literal_expr(true)),
+                name: Some(literal_expr(Yaml::Boolean(true))),
                 ..Default::default()
             },
             vec![
@@ -1017,7 +1023,7 @@ mod tests {
         #[case("with eval error in command",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    command: vec![literal_expr(true), env_var_expr("_undefined")],
+                    command: vec![literal_expr(Yaml::Boolean(true)), env_var_expr("_undefined")],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -1031,7 +1037,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Multi(indexmap! {
                     "process1" => ProcessExprTemplate {
-                        command: vec![literal_expr(true), env_var_expr("_undefined")],
+                        command: vec![literal_expr(Yaml::Boolean(true)), env_var_expr("_undefined")],
                         ..Default::default()
                     }
                 }),
@@ -1045,7 +1051,7 @@ mod tests {
         #[case("with eval error in env",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    env: vec![("MESSAGE1", literal_expr(true)), ("MESSAGE2", env_var_expr("_undefined"))],
+                    env: vec![("MESSAGE1", literal_expr(Yaml::Boolean(true))), ("MESSAGE2", env_var_expr("_undefined"))],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -1094,7 +1100,7 @@ mod tests {
         #[case("with not string stdin",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    stdin: literal_expr(true),
+                    stdin: literal_expr(Yaml::Boolean(true)),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -1133,7 +1139,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{
-                        "unknown" => literal_expr(true),
+                        "unknown" => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -1147,7 +1153,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap! {
-                        TEST_PARSE_ERROR_NAME => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -1175,7 +1181,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap! {
-                        "unknown" => literal_expr(true),
+                        "unknown" => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -1189,7 +1195,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap! {
-                        TEST_PARSE_ERROR_NAME => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -1217,7 +1223,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap! {
-                        "unknown" => literal_expr(true),
+                        "unknown" => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -1231,7 +1237,7 @@ mod tests {
             TestCaseExprTemplate {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap! {
-                        TEST_PARSE_ERROR_NAME => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -1245,7 +1251,7 @@ mod tests {
             TestCaseExprTemplate {
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
-                        "unknown" => literal_expr(true),
+                        "unknown" => literal_expr(Yaml::Boolean(true)),
                     },
                 },
                 ..Default::default()
@@ -1258,7 +1264,7 @@ mod tests {
             TestCaseExprTemplate {
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
-                        TEST_PARSE_ERROR_NAME => literal_expr(true),
+                        TEST_PARSE_ERROR_NAME => literal_expr(Yaml::Boolean(true)),
                     },
                 },
                 ..Default::default()
