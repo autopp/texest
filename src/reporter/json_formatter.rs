@@ -93,6 +93,7 @@ impl JsonFormatter {
 
 #[cfg(test)]
 mod tests {
+    use coverage_helper::test;
     use indexmap::indexmap;
     use serde_json::json;
 
