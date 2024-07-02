@@ -109,7 +109,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest]
     fn matches_with_not_utf8() {
         let original = r#"{"message": "hello", "nums": [1, 2]}"#;
         let m = EqJsonMatcher {
@@ -127,7 +127,7 @@ mod tests {
         use crate::validator::testutil::new_validator;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn success_case() {
             let (mut v, _) = new_validator();
             let original = r#"{"message": "hello"}"#;

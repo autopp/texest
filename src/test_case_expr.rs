@@ -944,7 +944,7 @@ mod tests {
             assert_eq!(Ok(expected), actual, "{}", title);
         }
 
-        #[test]
+        #[rstest]
         fn success_case_with_tmp_dir() {
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_path_buf = tmp_dir.path().to_path_buf();

@@ -326,13 +326,14 @@ pub mod testutil {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     const FILENAME: &str = "test.yaml";
 
     mod add_violation {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn with_one_call() {
             let mut v = Validator::new(FILENAME);
             let message = "error";
@@ -348,7 +349,7 @@ mod tests {
             );
         }
 
-        #[test]
+        #[rstest]
         fn with_two_calls() {
             let mut v = Validator::new(FILENAME);
             let message1 = "error1";
@@ -377,7 +378,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn appneds_path_prefix_in_callback() {
             let mut v = Validator::new(FILENAME);
 
@@ -422,7 +423,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn be_equivalent_to_in_path_with_index() {
             let mut v = Validator::new(FILENAME);
             let actual = v.in_index(1, |v| {
@@ -446,7 +447,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn be_equivalent_to_in_path_with_field() {
             let mut v = Validator::new(FILENAME);
             let actual = v.in_field("field", |v| {
@@ -470,13 +471,13 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_no_path_returns_root_path() {
             let v = Validator::new(FILENAME);
             assert_eq!("$".to_string(), v.current_path());
         }
 
-        #[test]
+        #[rstest]
         fn when_path_pushed_returns_appended_path() {
             let mut v = Validator::new(FILENAME);
 
@@ -497,7 +498,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_some_if_value_is_map() {
             let mut v = Validator::new(FILENAME);
             let m = mapping(vec![("answer", Yaml::Integer(42))]);
@@ -510,7 +511,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_if_value_is_not_string_key_map() {
             let mut v = Validator::new(FILENAME);
             let mut m = Hash::new();
@@ -527,7 +528,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_if_value_is_not_map() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("string".to_string());
@@ -546,7 +547,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_some_if_value_is_map() {
             let mut v = Validator::new(FILENAME);
             let m = mapping(vec![("answer", Yaml::Integer(42))]);
@@ -559,7 +560,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_if_value_is_not_string_key_map() {
             let mut v = Validator::new(FILENAME);
             let mut m = Hash::new();
@@ -576,7 +577,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_if_value_is_not_map() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("string".to_string());
@@ -598,7 +599,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use saphyr::Array;
 
-        #[test]
+        #[rstest]
         fn returns_some_if_value_is_seq() {
             let mut v = Validator::new(FILENAME);
             let s = Array::new();
@@ -607,7 +608,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_if_value_is_not_seq() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("string".to_string());
@@ -628,7 +629,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_the_bool_when_value_is_bool() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -637,7 +638,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_value_is_not_bool() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("string".to_string());
@@ -658,7 +659,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_the_uint_when_value_is_uint() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(42.into());
@@ -667,7 +668,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_value_is_not_uint() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer((-42).into());
@@ -688,7 +689,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_the_string_when_value_is_string() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("hello".to_string());
@@ -697,7 +698,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_value_is_not_string() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -711,7 +712,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_the_string_when_value_is_string() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("hello".to_string());
@@ -720,7 +721,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_value_is_not_string() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -744,7 +745,7 @@ mod tests {
         use pretty_assertions::assert_eq;
         use rstest::rstest;
 
-        #[test]
+        #[rstest]
         fn returns_the_sec_duration_when_value_is_uint() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(42);
@@ -753,7 +754,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn returns_the_duration_when_value_is_duration_string() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("42ms".to_string());
@@ -794,7 +795,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn returns_qualifier_and_value_when_qualified_map() {
             let mut v = Validator::new(FILENAME);
             let mut m = Hash::new();
@@ -810,7 +811,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_map_is_empty() {
             let mut v = Validator::new(FILENAME);
             let m = Yaml::Hash(Hash::new());
@@ -821,7 +822,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_map_contains_more_than_1_pairs() {
             let mut v = Validator::new(FILENAME);
             let mut m = Hash::new();
@@ -841,7 +842,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_name_is_not_starting_with_dollar() {
             let mut v = Validator::new(FILENAME);
             let mut m = Hash::new();
@@ -857,7 +858,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations);
         }
 
-        #[test]
+        #[rstest]
         fn returns_none_when_given_is_not_map() {
             let mut v = Validator::new(FILENAME);
             let given = Yaml::String("hello".to_string());
@@ -875,7 +876,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_value_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -898,7 +899,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_map_do_nothing() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -918,7 +919,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_value_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -941,7 +942,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_map_add_violation() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -969,7 +970,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_map_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
             let mut mapping = Hash::new();
@@ -997,7 +998,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_map_do_nothing() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1010,7 +1011,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_map_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("answer".to_string());
@@ -1038,7 +1039,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_seq_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
             let s: Array = vec![Yaml::Boolean(true)];
@@ -1063,7 +1064,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_seq_do_nothing() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1076,7 +1077,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_seq_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("answer".to_string());
@@ -1104,7 +1105,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_seq_calls_callback_and_return_it() {
             let mut v = Validator::new(FILENAME);
             let s = Array::new();
@@ -1128,7 +1129,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_seq_do_nothing() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1148,7 +1149,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_seq_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("answer".to_string());
@@ -1176,7 +1177,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_bool_returns_it() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -1188,7 +1189,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_bool_returns_none() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1199,7 +1200,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_bool_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::String("answer".to_string());
@@ -1225,7 +1226,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_uint_returns_it() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(42);
@@ -1237,7 +1238,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_uint_returns_none() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1248,7 +1249,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_uint_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(-42);
@@ -1274,7 +1275,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_uint_returns_it() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(42);
@@ -1286,7 +1287,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_uint_returns_none() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1304,7 +1305,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_uint_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(-42);
@@ -1329,7 +1330,7 @@ mod tests {
         use indexmap::indexmap;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_string_return_it() {
             let mut v = Validator::new(FILENAME);
             let s = "hello".to_string();
@@ -1342,7 +1343,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_returns_none() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1360,7 +1361,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_string_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Integer(42);
@@ -1385,7 +1386,7 @@ mod tests {
         use indexmap::indexmap;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_duration_return_it() {
             let mut v = Validator::new(FILENAME);
             let d = Yaml::String("42ms".to_string());
@@ -1397,7 +1398,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_return_none() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1408,7 +1409,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_duration_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -1433,7 +1434,7 @@ mod tests {
         use indexmap::indexmap;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_map_contains_duration_return_it() {
             let mut v = Validator::new(FILENAME);
             let d = Yaml::String("42ms".to_string());
@@ -1445,7 +1446,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_map_dosent_contain_add_violation() {
             let mut v = Validator::new(FILENAME);
             let m = indexmap! {};
@@ -1463,7 +1464,7 @@ mod tests {
             )
         }
 
-        #[test]
+        #[rstest]
         fn when_map_contains_not_duration_add_violation() {
             let mut v = Validator::new(FILENAME);
             let value = Yaml::Boolean(true);
@@ -1487,7 +1488,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
 
-        #[test]
+        #[rstest]
         fn when_all_succeeded_returns_result_vec() {
             let mut v = Validator::new(FILENAME);
             let s: Array = vec![
@@ -1505,7 +1506,7 @@ mod tests {
             assert_eq!(Vec::<Violation>::new(), v.violations)
         }
 
-        #[test]
+        #[rstest]
         fn when_some_failed_returns_none() {
             let mut v = Validator::new(FILENAME);
             let s: Array = vec![

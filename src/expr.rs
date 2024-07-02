@@ -227,7 +227,7 @@ mod tests {
             assert_eq!(expected, actual, "{}", title);
         }
 
-        #[test]
+        #[rstest]
         fn eval_expr_tmp_file() {
             let filename = "input.txt";
             let tmp_dir = tempfile::tempdir().unwrap();
@@ -252,7 +252,7 @@ mod tests {
             assert_eq!("hello world", fs::read_to_string(actual_path).unwrap());
         }
 
-        #[test]
+        #[rstest]
         fn eval_expr_tmp_file_with_not_string() {
             let filename = "input.txt";
             let tmp_dir = tempfile::tempdir().unwrap();
