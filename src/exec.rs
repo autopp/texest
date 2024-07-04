@@ -100,42 +100,51 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
 }
 
 async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output, String> {
-    let timeout_fut = tokio::time::sleep(timeout);
-    tokio::select! {
-        _ = timeout_fut => {
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => {
+            let status = if let Some(code) = status.code() {
+                Ok(Status::Exit(code))
+            } else if let Some(signal) = status.signal() {
+                Ok(Status::Signal(signal))
+            } else {
+                Err(format!("unknown process status: {}", status))
+            }?;
+
+            let mut stdout: Vec<u8> = vec![];
+            child
+                .stdout
+                .unwrap()
+                .read_to_end(&mut stdout)
+                .await
+                .map_err(|err| err.to_string())?;
+
+            let mut stderr: Vec<u8> = vec![];
+            child
+                .stderr
+                .unwrap()
+                .read_to_end(&mut stderr)
+                .await
+                .map_err(|err| err.to_string())?;
+
+            Ok(Output {
+                status,
+                stdout: OsString::from_vec(stdout),
+                stderr: OsString::from_vec(stderr),
+            })
+        }
+        Ok(Err(err)) => Err(err.to_string()),
+        // timeout
+        Err(_) => {
             child.kill().await.map_err(|err| err.to_string())?;
-            let output = child.wait_with_output().await.map_err(|err| format!("command execution failed: {}", err))?;
+            let output = child
+                .wait_with_output()
+                .await
+                .map_err(|err| format!("command execution failed: {}", err))?;
             Ok(Output {
                 status: Status::Timeout,
                 stdout: OsString::from_vec(output.stdout),
                 stderr: OsString::from_vec(output.stderr),
             })
-        },
-        result = child.wait() => {
-            match result {
-                Ok(status) => {
-                    let status = if let Some(code) = status.code() {
-                        Ok(Status::Exit(code))
-                    } else if let Some(signal) = status.signal() {
-                        Ok(Status::Signal(signal))
-                    } else {
-                        Err(format!("unknown process status: {}", status))
-                    }?;
-
-                    let mut stdout: Vec<u8> = vec![];
-                    child.stdout.unwrap().read_to_end(&mut stdout).await.map_err(|err| err.to_string())?;
-
-                    let mut stderr: Vec<u8> = vec![];
-                    child.stderr.unwrap().read_to_end(&mut stderr).await.map_err(|err| err.to_string())?;
-
-                    Ok(Output {
-                        status,
-                        stdout: OsString::from_vec(stdout),
-                        stderr: OsString::from_vec(stderr),
-                    })
-                },
-                Err(err) => Err(err.to_string()),
-            }
         }
     }
 }
