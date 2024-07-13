@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## v0.6.0
+
+- Add expr notation for wait condition parameter
+- Add default value notation to `$env` expr
+
 ## v0.5.0
 
 - Add stream matcher `include_json`
