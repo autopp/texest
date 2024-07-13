@@ -4,6 +4,7 @@ tests:
       - '-'
     env:
       MESSAGE: hello
+      FIRST_NAME: John
     stdin:
       $yaml:
         tests:
@@ -11,11 +12,13 @@ tests:
               - echo
               - '-n'
               - $env: MESSAGE
+              - $env: FIRST_NAME-Tom
+              - $env: LAST_NAME-Doe
             expect:
               status:
                 eq: 0
               stdout:
-                eq: hello
+                eq: hello John Doe
     expect:
       status:
         eq: 0

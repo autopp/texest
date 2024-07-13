@@ -251,6 +251,8 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
     }
 }
 
+static ENV_VAR_EXPR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?ms)\A([a-zA-Z_][a-zA-Z0-9_]*)(?:-(.*))?\z").unwrap());
 fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
     if v.may_be_string(x).is_some() {
         return Expr::Literal(x.clone());
@@ -258,8 +260,23 @@ fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
 
     v.may_be_qualified(x)
         .and_then(|(q, value)| match q {
-            "env" => v.in_field(".$env", |v| {
-                v.may_be_string(value).map(|name| Expr::EnvVar(name, None))
+            "env" => v.in_field("$env", |v| {
+                v.must_be_string(value).and_then(|s| {
+                    ENV_VAR_EXPR_RE
+                        .captures(&s)
+                        .map(|caps| {
+                            let name = caps.get(1).unwrap().as_str().to_string();
+                            let default = caps.get(2).map(|m| m.as_str().to_string());
+                            Expr::EnvVar(name, default)
+                        })
+                        .or_else(|| {
+                            v.add_violation(format!(
+                                "should be valid env var name (got \"{}\")",
+                                s
+                            ));
+                            None
+                        })
+                })
             }),
             "yaml" => Some(Expr::Yaml(value.clone())),
             "json" => Some(Expr::Json(value.clone())),
@@ -361,12 +378,18 @@ tests:
 tests:
     - command:
         - echo
-        - $env: MESSAGE", vec![TestCaseExprTemplate {
+        - $env: MESSAGE
+        - $env: |-
+            NAME-John
+            Doe
+        - $env: SUFFIX-", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
                     command: vec![
                         Expr::Literal(Yaml::String("echo".to_string().to_string())),
                         Expr::EnvVar("MESSAGE".to_string(), None),
+                        Expr::EnvVar("NAME".to_string(), Some("John\nDoe".to_string())),
+                        Expr::EnvVar("SUFFIX".to_string(), Some("".to_string())),
                     ],
                     ..Default::default()
                 }
@@ -757,6 +780,8 @@ tests:
         #[case("when test files matcher is not map", "tests: [{command: [echo], expect: {files: 42}}]", vec![("$.tests[0].expect.files", "should be map, but is uint")])]
         #[case("when test file matcher is not map", "tests: [{command: [echo], expect: {files: {hello: 42}}}]", vec![("$.tests[0].expect.files.hello", "should be map, but is uint")])]
         #[case("when test file matcher contains not string key", "tests: [{command: [echo], expect: {files: {hello: {true: 42}}}}]", vec![("$.tests[0].expect.files.hello", "should be string keyed map, but contains Boolean(true)")])]
+        #[case("when $env is not string", "tests: [{command: [cat, {$env: 42}]}]", vec![("$.tests[0].command[1].$env", "should be string, but is uint")])]
+        #[case("when $env is not valid env var name", "tests: [{command: [cat, {$env: \"MESS AGE\"}]}]", vec![("$.tests[0].command[1].$env", "should be valid env var name (got \"MESS AGE\")")])]
         #[case("when $tmp_file is not map", "tests: [{command: [cat, {$tmp_file: 42}]}]", vec![("$.tests[0].command[1].$tmp_file", "should be map, but is uint")])]
         #[case("when $tmp_file dosen't have filename", "tests: [{command: [cat, {$tmp_file: {contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .filename as string")])]
         #[case("when $tmp_file has filename as not string", "tests: [{command: [cat, {$tmp_file: {filename: 42, contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file.filename", "should be string, but is uint")])]
