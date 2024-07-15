@@ -4,7 +4,7 @@ use indexmap::{indexmap, IndexMap};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use saphyr::{Yaml, YamlLoader};
+use saphyr::Yaml;
 
 use crate::{
     ast::Map,
@@ -54,7 +54,7 @@ pub fn parse(filename: &str, mut reader: impl std::io::Read) -> Result<TestCaseE
         Error::without_violations(filename, format!("cannot read {}: {}", filename, err))
     })?;
 
-    let ast = &YamlLoader::load_from_str(&buf).map_err(|err| {
+    let ast = &Yaml::load_from_str(&buf).map_err(|err| {
         Error::without_violations(filename, format!("cannot parse {}: {}", filename, err))
     })?[0];
 

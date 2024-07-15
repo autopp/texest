@@ -1529,8 +1529,7 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 [[package]]
 name = "saphyr"
 version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80de2fc4848ba3cdd64b7127f2ffc420b8596bb10e80261a3895526c8c97f2e3"
+source = "git+https://github.com/saphyr-rs/saphyr.git?rev=d9d0f90d9bccf43a930cac1a5f7a33377ea2438d#d9d0f90d9bccf43a930cac1a5f7a33377ea2438d"
 dependencies = [
  "arraydeque",
  "encoding_rs",
@@ -1540,9 +1539,8 @@ dependencies = [
 
 [[package]]
 name = "saphyr-parser"
-version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "886b4bb040ecd2944f54c3543e612c336396e3eba700c5063d8bad5f40bac3d7"
+version = "0.0.2"
+source = "git+https://github.com/saphyr-rs/saphyr-parser.git?rev=c14b22f683ae4724d30117bb1461bef741d35bf6#c14b22f683ae4724d30117bb1461bef741d35bf6"
 dependencies = [
  "arraydeque",
  "hashlink",
@@ -2266,18 +2264,18 @@ checksum = "6830c89e3639d05ff9736978058a968dad6bd728c3a084413c2510467cb81bf3"
 
 [[package]]
 name = "zerocopy"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae87e3fcd617500e5d106f0380cf7b77f3c6092aae37191433159dda23cfb087"
+checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.7.34"
+version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15e934569e47891f7d9411f1a451d947a60e000ab3bd24fbb970f000387d1b3b"
+checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
 dependencies = [
  "proc-macro2",
  "quote",
