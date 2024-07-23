@@ -1,0 +1,49 @@
+tests:
+  - name: 'stream match_regex matcher with matched output'
+    command:
+      - $env: TEXEST
+      - '-'
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - hello
+            expect:
+              stdout:
+                match_regex: "el+o"
+    expect:
+      status:
+        eq: 0
+  - name: 'stream match_regex matcher with wrong output'
+    command:
+      - $env: TEXEST
+      - '-'
+      - --format
+      - json
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - hello
+            expect:
+              stdout:
+                match_regex: "goodbye"
+    expect:
+      status:
+        eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 1
+            num_passed_test_cases: 0
+            num_failed_test_cases: 1
+            success: false
+            test_results:
+              - name: 'echo hello'
+                passed: false
+                failures:
+                  - subject: main:stdout
+                    messages:
+                      - should match to /goodbye/, but don't match to it
