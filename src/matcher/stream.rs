@@ -2,10 +2,12 @@ mod contain;
 mod eq;
 mod eq_json;
 mod include_json;
+mod match_regex;
 use contain::ContainMatcher;
 use eq::EqMatcher;
 use eq_json::EqJsonMatcher;
 use include_json::IncludeJsonMatcher;
+use match_regex::MatchRegexMatcher;
 use saphyr::Yaml;
 
 use crate::validator::Validator;
@@ -16,6 +18,7 @@ pub enum StreamMatcher {
     Contain(contain::ContainMatcher),
     EqJson(eq_json::EqJsonMatcher),
     IncludeJson(include_json::IncludeJsonMatcher),
+    MatchRegex(match_regex::MatchRegexMatcher),
     #[cfg(test)]
     Test(super::testutil::TestMatcher),
 }
@@ -27,6 +30,7 @@ impl StreamMatcher {
             StreamMatcher::Contain(m) => m.matches(actual),
             StreamMatcher::EqJson(m) => m.matches(actual),
             StreamMatcher::IncludeJson(m) => m.matches(actual),
+            StreamMatcher::MatchRegex(m) => m.matches(actual),
             #[cfg(test)]
             StreamMatcher::Test(m) => m.matches(actual),
         }
@@ -48,6 +52,9 @@ impl StreamMatcher {
             }),
             "include_json" => v.in_field(name, |v| {
                 IncludeJsonMatcher::parse(v, param).map(StreamMatcher::IncludeJson)
+            }),
+            "match_regex" => v.in_field(name, |v| {
+                MatchRegexMatcher::parse(v, param).map(StreamMatcher::MatchRegex)
             }),
             _ => {
                 v.add_violation(format!("stream matcher \"{}\" is not defined", name));
@@ -77,7 +84,9 @@ mod tests {
     use crate::validator::testutil;
 
     use super::*;
+    use match_regex::MatchRegexMatcher;
     use pretty_assertions::assert_eq;
+    use regex::Regex;
     use rstest::rstest;
 
     #[rstest]
@@ -106,6 +115,13 @@ mod tests {
                 original: r#"{"message": "hello"}"#.into(),
             }))
         },
+        vec![])]
+    #[case("with match_regex",
+        "match_regex",
+        Yaml::String("hel*o".to_string()),
+        Some(StreamMatcher::MatchRegex(MatchRegexMatcher {
+            expected: Regex::new("hel*o").unwrap(),
+        })),
         vec![])]
     #[case("with unknown name", "unknown", Yaml::Boolean(true), None, vec![("", "stream matcher \"unknown\" is not defined")])]
     fn parse(
