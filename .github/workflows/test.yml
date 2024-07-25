@@ -2,6 +2,10 @@ name: test
 
 on:
   workflow_call:
+    inputs:
+      e2e_tester:
+        type: string
+        required: true
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -45,7 +49,7 @@ jobs:
           gh release download --repo autopp/texest --pattern texest-x86_64-unknown-linux-musl -D /tmp
           chmod a+x /tmp/texest-x86_64-unknown-linux-musl
           (cd test_server && cargo build)
-          E2E_TARGET=$(pwd)/target/release/texest E2E_TESTER=/tmp/texest-x86_64-unknown-linux-musl e2e/run.sh
+          E2E_TARGET=$(pwd)/target/release/texest E2E_TESTER=${{ inputs.e2e_tester }}
       - name: Notify to Slack
         uses: 8398a7/action-slack@v3
         with:
