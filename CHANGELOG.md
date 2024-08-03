@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v0.7.0
+
+- Add stream matcher `match_regex`
+
 ## v0.6.0
 
 - Add expr notation for wait condition parameter
