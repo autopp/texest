@@ -35,15 +35,15 @@ jobs:
       - id: extract-version
         run: './.github/scripts/extract-version'
       - run: echo VERSION=${{ steps.extract-version.outputs.version }} TAG=${{ steps.extract-version.outputs.tag }}
+      - run: |
+          cargo fmt --check
+          cargo clippy -- -D warnings
       - run: cargo llvm-cov --all-features --lcov --output-path lcov.info
         id: unittest
       - uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
         if: ${{ steps.unittest.conclusion == 'success' || steps.unittest.conclusion == 'failure' }}
-      - run: |
-          cargo fmt --check
-          cargo clippy -- -D warnings
       - run: cargo build --release
       - run: |
           gh release download --repo autopp/texest --pattern texest-x86_64-unknown-linux-musl -D /tmp
