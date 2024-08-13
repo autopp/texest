@@ -9,7 +9,12 @@ tests:
           - processes:
               server:
                 command:
-                  - test_server/target/debug/test_server
+                  - $env: SERVERIFY-serverify
+                  - --port
+                  - "4567"
+                  - $tmp_file:
+                      filename: serverify.yaml
+                      contents: 'paths: {}'
                 background:
                   wait_for:
                     type: http
