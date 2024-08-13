@@ -35,21 +35,22 @@ jobs:
       - id: extract-version
         run: './.github/scripts/extract-version'
       - run: echo VERSION=${{ steps.extract-version.outputs.version }} TAG=${{ steps.extract-version.outputs.tag }}
+      - run: |
+          cargo fmt --check
+          cargo clippy -- -D warnings
       - run: cargo llvm-cov --all-features --lcov --output-path lcov.info
         id: unittest
       - uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
         if: ${{ steps.unittest.conclusion == 'success' || steps.unittest.conclusion == 'failure' }}
-      - run: |
-          cargo fmt --check
-          cargo clippy -- -D warnings
       - run: cargo build --release
       - run: |
           gh release download --repo autopp/texest --pattern texest-x86_64-unknown-linux-musl -D /tmp
           chmod a+x /tmp/texest-x86_64-unknown-linux-musl
-          (cd test_server && cargo build)
-          E2E_TARGET=$(pwd)/target/release/texest E2E_TESTER=${{ inputs.e2e_tester }} e2e/run.sh
+          gh release download --repo autopp/serverify --pattern serverify-x86_64-unknown-linux-musl -D /tmp
+          chmod a+x /tmp/serverify-x86_64-unknown-linux-musl
+          E2E_TARGET=$(pwd)/target/release/texest E2E_TESTER=${{ inputs.e2e_tester }} SERVERIFY=/tmp/serverify-x86_64-unknown-linux-musl e2e/run.sh
       - name: Notify to Slack
         uses: 8398a7/action-slack@v3
         with:
