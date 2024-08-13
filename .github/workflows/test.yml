@@ -48,7 +48,6 @@ jobs:
       - run: |
           gh release download --repo autopp/texest --pattern texest-x86_64-unknown-linux-musl -D /tmp
           chmod a+x /tmp/texest-x86_64-unknown-linux-musl
-          (cd test_server && cargo build)
           gh release download --repo autopp/serverify --pattern serverify-x86_64-unknown-linux-musl -D /tmp
           chmod a+x /tmp/serverify-x86_64-unknown-linux-musl
           E2E_TARGET=$(pwd)/target/release/texest E2E_TESTER=${{ inputs.e2e_tester }} SERVERIFY=/tmp/serverify-x86_64-unknown-linux-musl e2e/run.sh
