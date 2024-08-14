@@ -1,12 +1,9 @@
-use std::{os::unix::ffi::OsStrExt, path::PathBuf};
+use std::path::PathBuf;
 
 use once_cell::sync::OnceCell;
-use saphyr::{Hash, Yaml, YamlEmitter};
+use saphyr::{Yaml, YamlEmitter};
 
-use crate::{
-    test_case::{LifeCycleHook, SetupHook},
-    tmp_dir::TmpDirSupplier,
-};
+use crate::{test_case::setup_hook::SetupHook, tmp_dir::TmpDirSupplier};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
@@ -25,47 +22,7 @@ pub struct Context<'a, T: TmpDirSupplier> {
 #[derive(Debug, PartialEq)]
 pub struct EvalOutput {
     pub value: Yaml,
-    pub setup_hook: Option<Box<dyn SetupHook>>,
-}
-
-#[derive(Debug)]
-pub struct SetupTmpFileHook {
-    pub path: PathBuf,
-    pub contents: String,
-}
-
-impl LifeCycleHook for SetupTmpFileHook {
-    fn serialize(&self) -> (&str, Yaml) {
-        let mut map = Hash::new();
-        map.insert(
-            Yaml::String("path".to_string()),
-            Yaml::Array(
-                self.path
-                    .as_os_str()
-                    .as_bytes()
-                    .iter()
-                    .map(|n| Yaml::Integer(*n as i64))
-                    .collect::<Vec<_>>(),
-            ),
-        );
-        map.insert(
-            Yaml::String("contents".to_string()),
-            Yaml::String(self.contents.clone()),
-        );
-        ("setup_tmp_file", Yaml::Hash(map))
-    }
-}
-
-impl SetupHook for SetupTmpFileHook {
-    fn setup(&self) -> Result<(), String> {
-        std::fs::write(&self.path, &self.contents).map_err(|err| {
-            format!(
-                "failed to write tmp file {}: {}",
-                self.path.to_string_lossy(),
-                err
-            )
-        })
-    }
+    pub setup_hook: Option<SetupHook>,
 }
 
 impl<'a, T: TmpDirSupplier> Context<'a, T> {
@@ -118,10 +75,10 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
 
                             EvalOutput {
                                 value: Yaml::String(path.to_string_lossy().to_string()),
-                                setup_hook: Some(Box::new(SetupTmpFileHook {
+                                setup_hook: Some(SetupHook::new_tmp_file(
                                     path,
-                                    contents: contents.to_string(),
-                                })),
+                                    contents.to_string(),
+                                )),
                             }
                         })
                     })

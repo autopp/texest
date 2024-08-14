@@ -1,10 +1,13 @@
+pub mod setup_hook;
+pub mod teardown_hook;
 pub mod wait_condition;
 
 use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
 
 use futures::future::join_all;
 use indexmap::{indexmap, IndexMap};
-use saphyr::Yaml;
+use setup_hook::SetupHook;
+use teardown_hook::TeardownHook;
 
 use crate::{
     exec::{execute_background_command, execute_command, BackgroundExec, Output, Status},
@@ -12,30 +15,6 @@ use crate::{
 };
 
 pub use self::wait_condition::WaitCondition;
-
-pub trait LifeCycleHook: Debug {
-    fn serialize(&self) -> (&str, Yaml);
-}
-
-pub trait SetupHook: LifeCycleHook {
-    fn setup(&self) -> Result<(), String>;
-}
-
-impl PartialEq for dyn SetupHook {
-    fn eq(&self, other: &Self) -> bool {
-        self.serialize() == other.serialize()
-    }
-}
-
-pub trait TeardownHook: LifeCycleHook {
-    fn teardown(&self) -> Result<(), String>;
-}
-
-impl PartialEq for dyn TeardownHook {
-    fn eq(&self, other: &Self) -> bool {
-        self.serialize() == other.serialize()
-    }
-}
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct BackgroundConfig {
@@ -69,8 +48,8 @@ pub struct TestCase {
     pub path: String,
     pub processes: IndexMap<String, Process>,
     pub files_matchers: IndexMap<String, Vec<StreamMatcher>>,
-    pub setup_hooks: Vec<Box<dyn SetupHook>>,
-    pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
+    pub setup_hooks: Vec<SetupHook>,
+    pub teardown_hooks: Vec<TeardownHook>,
 }
 
 pub struct TestCaseFile<'a> {
@@ -315,12 +294,13 @@ fn run_stream_matchers(matchers: &[StreamMatcher], stream: &[u8]) -> Vec<String>
 #[cfg(test)]
 pub mod testutil {
     use indexmap::{indexmap, IndexMap};
-    use saphyr::Yaml;
 
     use crate::matcher::{StatusMatcher, StreamMatcher};
     use std::{cell::RefCell, rc::Rc, time::Duration};
 
-    use super::{LifeCycleHook, Process, ProcessMode, SetupHook, TeardownHook, TestCase};
+    use super::{
+        setup_hook::SetupHook, teardown_hook::TeardownHook, Process, ProcessMode, TestCase,
+    };
 
     pub const DEFAULT_NAME: &str = "test";
     pub const DEFAULT_FILENAME: &str = "test.yaml";
@@ -335,7 +315,7 @@ pub mod testutil {
 
     pub type HookHistory = Vec<(HookType, &'static str)>;
 
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     pub struct TestHook {
         pub name: &'static str,
         pub err: Option<&'static str>,
@@ -354,23 +334,13 @@ pub mod testutil {
         fn to_result(&self) -> Result<(), String> {
             self.err.map(|err| Err(err.into())).unwrap_or(Ok(()))
         }
-    }
 
-    impl LifeCycleHook for TestHook {
-        fn serialize(&self) -> (&str, Yaml) {
-            ("test", Yaml::String(self.name.to_string()))
-        }
-    }
-
-    impl SetupHook for TestHook {
-        fn setup(&self) -> Result<(), String> {
+        pub fn setup(&self) -> Result<(), String> {
             self.history.borrow_mut().push((HookType::Setup, self.name));
             self.to_result()
         }
-    }
 
-    impl TeardownHook for TestHook {
-        fn teardown(&self) -> Result<(), String> {
+        pub fn teardown(&self) -> Result<(), String> {
             self.history
                 .borrow_mut()
                 .push((HookType::Teardown, self.name));
@@ -436,8 +406,8 @@ pub mod testutil {
         pub path: &'static str,
         pub processes: IndexMap<&'static str, ProcessTemplate>,
         pub files_matchers: FilesMatchers,
-        pub setup_hooks: Vec<Box<dyn SetupHook>>,
-        pub teardown_hooks: Vec<Box<dyn TeardownHook>>,
+        pub setup_hooks: Vec<SetupHook>,
+        pub teardown_hooks: Vec<TeardownHook>,
     }
 
     impl TestCaseTemplate {
@@ -502,7 +472,7 @@ mod tests {
             };
             use crate::test_case::testutil::HookType::{Setup, Teardown};
             use crate::test_case::testutil::{
-                HookHistory, ProcessTemplate, TestCaseTemplate, TestHook, DEFAULT_NAME,
+                HookHistory, ProcessTemplate, TestCaseTemplate, DEFAULT_NAME,
             };
             use crate::test_case::wait_condition::SleepCondition;
 
@@ -511,6 +481,9 @@ mod tests {
             use super::*;
             use pretty_assertions::assert_eq;
             use rstest::rstest;
+            use saphyr::Yaml;
+            use setup_hook::testutil::new_test_setup_hook;
+            use teardown_hook::testutil::new_test_teardown_hook;
 
             #[rstest]
             #[case("command is exit, no matchers",
@@ -700,15 +673,11 @@ mod tests {
                     },
                     setup_hooks: setup_hooks
                         .iter()
-                        .map(|(name, err)| -> Box<dyn SetupHook> {
-                            Box::new(TestHook::new(name, *err, Rc::clone(&history)))
-                        })
+                        .map(|(name, err)| new_test_setup_hook(name, *err, Rc::clone(&history)))
                         .collect(),
                     teardown_hooks: teardown_hooks
                         .iter()
-                        .map(|(name, err)| -> Box<dyn TeardownHook> {
-                            Box::new(TestHook::new(name, *err, Rc::clone(&history)))
-                        })
+                        .map(|(name, err)| new_test_teardown_hook(name, *err, Rc::clone(&history)))
                         .collect(),
                     ..Default::default()
                 }

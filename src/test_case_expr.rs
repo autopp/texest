@@ -6,7 +6,9 @@ use saphyr::Yaml;
 use crate::{
     expr::{Context, EvalOutput, Expr},
     matcher::{StatusMatcher, StreamMatcher},
-    test_case::{BackgroundConfig, Process, ProcessMode, SetupHook, TestCase, WaitCondition},
+    test_case::{
+        setup_hook::SetupHook, BackgroundConfig, Process, ProcessMode, TestCase, WaitCondition,
+    },
     tmp_dir::TmpDirSupplier,
     validator::{Validator, Violation},
 };
@@ -90,7 +92,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     let mut v =
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
     let mut ctx = Context::new(tmp_dir_supplier);
-    let mut setup_hooks: Vec<Box<dyn SetupHook>> = vec![];
+    let mut setup_hooks: Vec<SetupHook> = vec![];
 
     let mut processes_matchers: IndexMap<
         String,
@@ -261,7 +263,7 @@ fn eval_matcher_exprs<T, TS: TmpDirSupplier, F: Fn(&mut Validator, &str, &Yaml) 
 fn eval_process_expr<T: TmpDirSupplier>(
     v: &mut Validator,
     ctx: &mut Context<'_, T>,
-    setup_hooks: &mut Vec<Box<dyn SetupHook>>,
+    setup_hooks: &mut Vec<SetupHook>,
     status_matchers: Vec<StatusMatcher>,
     stdout_matchers: Vec<StreamMatcher>,
     stderr_matchers: Vec<StreamMatcher>,
@@ -584,15 +586,12 @@ mod tests {
     use super::*;
     mod eval_test_case_expr {
         use crate::{
-            expr::{
-                testutil::{env_var_expr, literal_expr},
-                SetupTmpFileHook,
-            },
+            expr::testutil::{env_var_expr, literal_expr},
             matcher::testutil::{
                 new_status_test_success, new_stream_test_success, PARSE_ERROR_VIOLATION_MESSAGE,
                 TEST_PARSE_ERROR_NAME, TEST_SUCCESS_NAME,
             },
-            test_case::{BackgroundConfig, ProcessMode},
+            test_case::{setup_hook::SetupHook, BackgroundConfig, ProcessMode},
             test_case_expr::testutil::{
                 ProcessExprTemplate, ProcessMatchersExprTemplate, ProcessesExprTemplate,
                 ProcessesMatchersExprTemplate, TestCaseExprTemplate,
@@ -991,10 +990,10 @@ mod tests {
                     }
                 },
                 files_matchers: indexmap! {},
-                setup_hooks: vec![Box::new(SetupTmpFileHook {
-                    path: tmp_file_path_buf.clone(),
-                    contents: "hello".to_string(),
-                })],
+                setup_hooks: vec![SetupHook::new_tmp_file(
+                    tmp_file_path_buf.clone(),
+                    "hello".to_string(),
+                )],
                 teardown_hooks: vec![],
             }];
 
