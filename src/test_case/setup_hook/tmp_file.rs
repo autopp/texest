@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct TmpFileSetupHook {
     pub path: PathBuf,
     pub contents: String,

@@ -2,7 +2,7 @@ use saphyr::Yaml;
 
 use crate::validator::Validator;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ContainMatcher {
     pub(super) expected: Vec<u8>,
 }

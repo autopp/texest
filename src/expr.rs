@@ -5,7 +5,8 @@ use saphyr::{Yaml, YamlEmitter};
 
 use crate::{test_case::setup_hook::SetupHook, tmp_dir::TmpDirSupplier};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum Expr {
     Literal(Yaml),
     EnvVar(String, Option<String>),
@@ -19,7 +20,7 @@ pub struct Context<'a, T: TmpDirSupplier> {
     tmp_dir_supplier: &'a mut T,
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct EvalOutput {
     pub value: Yaml,
     pub setup_hook: Option<SetupHook>,

@@ -3,7 +3,7 @@ use similar::TextDiff;
 
 use crate::validator::Validator;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct EqMatcher {
     pub(super) expected: Vec<u8>,
 }

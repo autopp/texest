@@ -19,7 +19,7 @@ use reporter::{Formatter, Reporter};
 use runner::run_tests;
 
 use test_case::TestCaseFile;
-use test_case_expr::eval_test_expr;
+use test_case_expr::{eval_test_expr, TestExprError};
 
 use crate::parser::parse;
 
@@ -66,25 +66,20 @@ fn main() {
         std::process::exit(EXIT_CODE_INVALID_INPUT);
     }
 
-    let (oks, errs): (Vec<_>, Vec<_>) = args
-        .files
-        .iter()
-        .map(|filename| {
-            if filename == "-" {
-                parse("<stdin>", std::io::stdin())
-            } else {
-                let file = File::open(filename).unwrap_or_else(|err| {
-                    eprintln!("cannot open {}: {}", filename, err);
-                    std::process::exit(EXIT_CODE_INVALID_INPUT)
-                });
-                parse(filename, file)
-            }
-        })
-        .partition(Result::is_ok);
+    let (test_case_expr_files, errs) = partition_results(args.files.iter().map(|filename| {
+        if filename == "-" {
+            parse("<stdin>", std::io::stdin())
+        } else {
+            let file = File::open(filename).unwrap_or_else(|err| {
+                eprintln!("cannot open {}: {}", filename, err);
+                std::process::exit(EXIT_CODE_INVALID_INPUT)
+            });
+            parse(filename, file)
+        }
+    }));
 
     if !errs.is_empty() {
         errs.iter().for_each(|err| {
-            let err = err.as_ref().unwrap_err();
             eprintln!("{}: {}", err.filename, err.message);
             err.violations.iter().for_each(|violation| {
                 eprintln!(
@@ -98,29 +93,31 @@ fn main() {
 
     let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
 
-    let eval_results = oks
-        .iter()
-        .map(|ok| {
-            let test_case_expr_file = ok.as_ref().unwrap();
-            let test_cases = test_case_expr_file
-                .test_case_exprs
-                .iter()
-                .map(|test_case_expr| eval_test_expr(&mut tmp_dir_supplier, test_case_expr))
-                .collect::<Vec<_>>();
-            (test_case_expr_file.filename.clone(), test_cases)
-        })
-        .collect::<Vec<_>>();
+    let (test_case_files, errs): (Vec<TestCaseFile>, Vec<TestExprError>) =
+        test_case_expr_files
+            .iter()
+            .map(|test_case_expr_file| {
+                let (test_cases, errs) =
+                    partition_results(test_case_expr_file.test_case_exprs.iter().map(
+                        |test_case_expr| eval_test_expr(&mut tmp_dir_supplier, test_case_expr),
+                    ));
 
-    let errs = eval_results
-        .iter()
-        .flat_map(|(_, test_cases)| {
-            test_cases
-                .iter()
-                .filter(|test_cases| test_cases.is_err())
-                .map(|test_cases| test_cases.as_ref().unwrap_err())
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+                (
+                    TestCaseFile {
+                        filename: test_case_expr_file.filename.clone(),
+                        test_cases: test_cases.into_iter().flatten().collect(),
+                    },
+                    errs,
+                )
+            })
+            .fold(
+                (Vec::new(), Vec::new()),
+                |(mut test_case_files, mut errs), (tcs, es)| {
+                    test_case_files.push(tcs);
+                    errs.extend(es);
+                    (test_case_files, errs)
+                },
+            );
 
     if !errs.is_empty() {
         errs.iter().for_each(|err| {
@@ -133,21 +130,6 @@ fn main() {
         });
         std::process::exit(EXIT_CODE_INVALID_INPUT);
     }
-
-    let test_case_files = eval_results
-        .iter()
-        .map(|(filename, results)| {
-            let test_cases = results
-                .iter()
-                .flat_map(|test_case| test_case.as_ref().unwrap())
-                .collect::<Vec<_>>();
-
-            TestCaseFile {
-                filename: filename.clone(),
-                test_cases,
-            }
-        })
-        .collect::<Vec<_>>();
 
     let use_color = match args.color {
         Color::Auto => std::io::stdout().is_terminal(),
@@ -173,4 +155,16 @@ fn main() {
     if !result.unwrap().is_all_passed() {
         std::process::exit(EXIT_CODE_TEST_FAILED)
     }
+}
+
+fn partition_results<T, E>(results: impl Iterator<Item = Result<T, E>>) -> (Vec<T>, Vec<E>) {
+    let mut oks = vec![];
+    let mut errs = vec![];
+
+    results.into_iter().for_each(|result| match result {
+        Ok(ok) => oks.push(ok),
+        Err(err) => errs.push(err),
+    });
+
+    (oks, errs)
 }

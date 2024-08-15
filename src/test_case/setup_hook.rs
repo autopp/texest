@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use tmp_file::TmpFileSetupHook;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum SetupHook {
     TmpFile(TmpFileSetupHook),
     #[cfg(test)]

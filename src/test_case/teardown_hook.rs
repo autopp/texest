@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum TeardownHook {
     #[cfg(test)]
     Test(super::testutil::TestHook),

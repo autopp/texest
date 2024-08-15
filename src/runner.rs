@@ -14,7 +14,7 @@ pub fn run_tests<W: Write>(
         .into_iter()
         .flat_map(|test_case_file| test_case_file.test_cases)
         .map(|test_case| {
-            reporter.on_test_case_start(test_case)?;
+            reporter.on_test_case_start(&test_case)?;
             let r = test_case.run();
             reporter.on_test_case_end(&r)?;
             Ok::<TestResult, String>(r)
@@ -49,7 +49,7 @@ mod tests {
         let mut buf = Vec::<u8>::new();
         let mut reporter = Reporter::new(&mut buf, true, Formatter::new_simple());
 
-        let success_case = &TestCaseTemplate {
+        let success_case = TestCaseTemplate {
             name: "success",
             processes: indexmap! {
                 "main" => ProcessTemplate {
@@ -76,11 +76,11 @@ mod tests {
         let test_case_files = vec![
             TestCaseFile {
                 filename: "test_file1.yaml".to_string(),
-                test_cases: vec![&success_case],
+                test_cases: vec![success_case],
             },
             TestCaseFile {
                 filename: "test_file2.yaml".to_string(),
-                test_cases: vec![&failure_case],
+                test_cases: vec![failure_case],
             },
         ];
 
