@@ -1,5 +1,4 @@
 mod ast;
-mod error;
 mod exec;
 mod expr;
 mod matcher;
@@ -23,14 +22,14 @@ use test_case_expr::{eval_test_expr, TestExprError};
 
 use crate::parser::parse;
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Clone, ValueEnum)]
 enum Color {
     Auto,
     Always,
     Never,
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Clone, ValueEnum)]
 enum Format {
     Simple,
     Json,
