@@ -16,18 +16,20 @@ use crate::{
 
 pub use self::wait_condition::WaitCondition;
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct BackgroundConfig {
     pub wait_condition: WaitCondition,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProcessMode {
     Foreground,
     Background(BackgroundConfig),
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Process {
     pub command: Vec<String>,
     pub stdin: String,
@@ -41,10 +43,12 @@ pub struct Process {
     pub stderr_matchers: Vec<StreamMatcher>,
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct TestCase {
     pub name: String,
+    #[allow(dead_code)]
     pub filename: String,
+    #[allow(dead_code)]
     pub path: String,
     pub processes: IndexMap<String, Process>,
     pub files_matchers: IndexMap<String, Vec<StreamMatcher>>,
@@ -52,11 +56,11 @@ pub struct TestCase {
     pub teardown_hooks: Vec<TeardownHook>,
 }
 
-pub struct TestCaseFile<'a> {
+pub struct TestCaseFile {
     // TODO: remove allow (and use in report?)
     #[allow(dead_code)]
     pub filename: String,
-    pub test_cases: Vec<&'a TestCase>,
+    pub test_cases: Vec<TestCase>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -73,7 +77,7 @@ impl TestResult {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct TestResultSummary {
     pub results: Vec<TestResult>,
 }
@@ -307,7 +311,7 @@ pub mod testutil {
     pub const DEFAULT_PATH: &str = "$.tests[0]";
     pub const DEFAULT_TIMEOUT: u64 = 10;
 
-    #[derive(Debug, PartialEq)]
+    #[cfg_attr(test, derive(Debug, PartialEq))]
     pub enum HookType {
         Setup,
         Teardown,
@@ -315,7 +319,7 @@ pub mod testutil {
 
     pub type HookHistory = Vec<(HookType, &'static str)>;
 
-    #[derive(Debug, PartialEq)]
+    #[cfg_attr(test, derive(Debug, PartialEq))]
     pub struct TestHook {
         pub name: &'static str,
         pub err: Option<&'static str>,

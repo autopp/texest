@@ -13,29 +13,32 @@ use crate::{
     validator::{Validator, Violation},
 };
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct TestExprError {
     pub violations: Vec<Violation>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct BackgroundConfigExpr {
     pub wait_condition: Option<WaitConditionExpr>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct WaitConditionExpr {
     pub name: String,
     pub params: IndexMap<String, Expr>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProcessModeExpr {
     Foreground,
     Background(BackgroundConfigExpr),
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ProcessExpr {
     pub command: Vec<Expr>,
     pub stdin: Expr,
@@ -46,26 +49,26 @@ pub struct ProcessExpr {
     pub tee_stderr: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProcessesExpr {
     Single(ProcessExpr),
     Multi(IndexMap<String, ProcessExpr>),
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ProcessMatchersExpr {
     pub status_matcher_exprs: IndexMap<String, Expr>,
     pub stdout_matcher_exprs: IndexMap<String, Expr>,
     pub stderr_matcher_exprs: IndexMap<String, Expr>,
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProcessesMatchersExpr {
     Single(ProcessMatchersExpr),
     Multi(IndexMap<String, ProcessMatchersExpr>),
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct TestCaseExpr {
     pub name: Option<Expr>,
     pub filename: String,
@@ -75,7 +78,7 @@ pub struct TestCaseExpr {
     pub files_matchers: IndexMap<String, IndexMap<String, Expr>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct TestCaseExprFile {
     pub filename: String,
     pub test_case_exprs: Vec<TestCaseExpr>,

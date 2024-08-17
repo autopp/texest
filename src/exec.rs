@@ -12,14 +12,14 @@ use tokio::process::Command;
 
 use crate::test_case::WaitCondition;
 
-#[derive(PartialEq, Debug)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum Status {
     Exit(i32),
     Signal(i32),
     Timeout,
 }
 
-#[derive(PartialEq, Debug)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Output {
     pub status: Status,
     pub stdout: OsString,

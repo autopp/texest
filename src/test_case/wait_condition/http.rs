@@ -4,7 +4,8 @@ use reqwest::Client;
 
 use crate::{ast::Map, validator::Validator};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct HttpCondition {
     pub port: u16,
     pub path: String,

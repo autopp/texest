@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use crate::{ast::Map, validator::Validator};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct SleepCondition {
     pub duration: Duration,
 }

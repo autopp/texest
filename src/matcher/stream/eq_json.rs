@@ -3,7 +3,7 @@ use saphyr::Yaml;
 
 use crate::validator::Validator;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct EqJsonMatcher {
     pub(super) expected: serde_json::Value,
     pub(super) original: String,

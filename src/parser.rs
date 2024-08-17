@@ -16,7 +16,7 @@ use crate::{
     validator::{Validator, Violation},
 };
 
-#[derive(PartialEq, Debug)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Error {
     pub filename: String,
     pub message: String,

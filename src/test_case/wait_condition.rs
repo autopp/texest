@@ -9,7 +9,8 @@ use crate::validator::Validator;
 pub use self::http::HttpCondition;
 pub use self::sleep::SleepCondition;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum WaitCondition {
     Sleep(SleepCondition),
     Http(HttpCondition),

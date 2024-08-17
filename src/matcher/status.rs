@@ -1,10 +1,9 @@
 mod eq;
-use std::fmt::Debug;
 
 use eq::EqMatcher;
 use saphyr::Yaml;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum StatusMatcher {
     Eq(eq::EqMatcher),
     #[cfg(test)]

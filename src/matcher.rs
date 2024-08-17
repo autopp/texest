@@ -17,7 +17,7 @@ pub mod testutil {
     pub use super::status::testutil::{new_status_test_failure, new_status_test_success};
     pub use super::stream::testutil::{new_stream_test_failure, new_stream_test_success};
 
-    #[derive(Debug, PartialEq)]
+    #[cfg_attr(test, derive(Debug, PartialEq))]
     pub enum Kind {
         Success,
         Failure,
@@ -26,7 +26,7 @@ pub mod testutil {
 
     pub const PARSE_ERROR_VIOLATION_MESSAGE: &str = "violation";
 
-    #[derive(Debug, PartialEq)]
+    #[cfg_attr(test, derive(Debug, PartialEq))]
     pub struct TestMatcher {
         pub kind: Kind,
         pub param: Yaml,

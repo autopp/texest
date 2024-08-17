@@ -12,7 +12,7 @@ use saphyr::Yaml;
 
 use crate::validator::Validator;
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum StreamMatcher {
     Eq(eq::EqMatcher),
     Contain(contain::ContainMatcher),

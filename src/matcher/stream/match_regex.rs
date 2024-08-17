@@ -3,11 +3,12 @@ use saphyr::Yaml;
 
 use crate::validator::Validator;
 
-#[derive(Debug)]
+#[cfg_attr(test, derive(Debug))]
 pub struct MatchRegexMatcher {
     pub(super) expected: Regex,
 }
 
+#[cfg(test)]
 impl PartialEq for MatchRegexMatcher {
     fn eq(&self, other: &Self) -> bool {
         self.expected.as_str() == other.expected.as_str()

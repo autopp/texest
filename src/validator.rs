@@ -3,14 +3,15 @@ use std::time::Duration;
 use crate::ast::{Ast, Map};
 use saphyr::{Array, Yaml};
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Violation {
     pub filename: String,
     pub path: String,
     pub message: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Validator {
     pub filename: String,
     pub paths: Vec<String>,
