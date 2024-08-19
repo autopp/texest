@@ -24,7 +24,7 @@ pub struct Error {
 }
 
 impl Error {
-    fn without_violations(filename: &str, message: impl Into<String>) -> Self {
+    pub fn without_violations(filename: &str, message: impl Into<String>) -> Self {
         Self {
             filename: filename.to_string(),
             message: message.into(),
