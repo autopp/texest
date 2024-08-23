@@ -11,18 +11,12 @@ mod test_case_runner;
 mod tmp_dir;
 mod validator;
 
-use std::{collections::HashSet, fs::File, io::IsTerminal};
+use std::{collections::HashSet, io::IsTerminal};
 
 use clap::{Parser, ValueEnum};
 
-use reporter::{Formatter, Reporter};
-use run::run;
-use test_case_runner::run_tests;
-
-use test_case::TestCaseFile;
-use test_case_expr::{eval_test_expr, TestExprError};
-
-use crate::parser::parse;
+use reporter::Formatter;
+use run::Runner;
 
 #[derive(Clone, ValueEnum)]
 enum Color {
@@ -80,7 +74,7 @@ fn main() {
         Format::Json => Formatter::new_json(),
     };
 
-    if let Err(err) = run(inputs, use_color, f) {
+    if let Err(err) = Runner::new(use_color, f, std::io::stdout(), std::io::stderr()).run(inputs) {
         std::process::exit(err.to_exit_status());
     }
 }

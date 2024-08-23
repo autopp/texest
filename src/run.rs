@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, io::Write};
 
 use crate::{
     parser::{self, parse},
@@ -14,6 +14,7 @@ pub enum Input {
     Stdin,
 }
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum TexestError {
     TestFailed,
     InvalidInput,
@@ -30,35 +31,56 @@ impl TexestError {
     }
 }
 
-pub fn run(inputs: Vec<Input>, use_color: bool, f: Formatter) -> Result<(), TexestError> {
-    let (test_case_expr_files, errs) = partition_results(inputs.iter().map(|input| {
-        match input {
-            Input::File(filename) => File::open(filename)
-                .map_err(|err| {
-                    parser::Error::without_violations(filename, format!("cannot open: {}", err))
-                })
-                .and_then(|file| parse(filename, file)),
-            Input::Stdin => parse("<stdin>", std::io::stdin()),
-        }
-    }));
+pub struct Runner<ReportW: Write, ErrW: Write> {
+    use_color: bool,
+    formatter: Formatter,
+    rw: ReportW,
+    errw: ErrW,
+}
 
-    if !errs.is_empty() {
-        errs.iter().for_each(|err| {
-            eprintln!("{}: {}", err.filename, err.message);
-            err.violations.iter().for_each(|violation| {
-                eprintln!(
-                    "{}:{}: {}",
-                    violation.filename, violation.path, violation.message
-                );
-            });
-        });
-        return Err(TexestError::InvalidInput);
+impl<ReportW: Write, ErrW: Write> Runner<ReportW, ErrW> {
+    pub fn new(use_color: bool, formatter: Formatter, rw: ReportW, errw: ErrW) -> Self {
+        Self {
+            use_color,
+            formatter,
+            rw,
+            errw,
+        }
     }
 
-    let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
+    pub fn run(mut self, inputs: Vec<Input>) -> Result<(), TexestError> {
+        let (test_case_expr_files, errs) = partition_results(inputs.iter().map(|input| {
+            match input {
+                Input::File(filename) => File::open(filename)
+                    .map_err(|err| {
+                        parser::Error::without_violations(filename, format!("cannot open: {}", err))
+                    })
+                    .and_then(|file| parse(filename, file)),
+                Input::Stdin => parse("<stdin>", std::io::stdin()),
+            }
+        }));
 
-    let (test_case_files, errs): (Vec<TestCaseFile>, Vec<TestExprError>) =
-        test_case_expr_files
+        if !errs.is_empty() {
+            errs.iter()
+                .try_for_each(|err| -> std::io::Result<()> {
+                    writeln!(self.errw, "{}: {}", err.filename, err.message)?;
+                    err.violations
+                        .iter()
+                        .try_for_each(|violation| -> std::io::Result<()> {
+                            writeln!(
+                                self.errw,
+                                "{}:{}: {}",
+                                violation.filename, violation.path, violation.message
+                            )
+                        })
+                })
+                .or(Err(TexestError::InternalError))?;
+            return Err(TexestError::InvalidInput);
+        }
+
+        let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
+
+        let (test_case_files, errs): (Vec<TestCaseFile>, Vec<TestExprError>) = test_case_expr_files
             .iter()
             .map(|test_case_expr_file| {
                 let (test_cases, errs) =
@@ -83,33 +105,38 @@ pub fn run(inputs: Vec<Input>, use_color: bool, f: Formatter) -> Result<(), Texe
                 },
             );
 
-    if !errs.is_empty() {
-        errs.iter().for_each(|err| {
-            err.violations.iter().for_each(|violation| {
-                eprintln!(
-                    "{}:{}: {}",
-                    violation.filename, violation.path, violation.message
-                );
-            });
-        });
-        return Err(TexestError::InvalidInput);
+        if !errs.is_empty() {
+            errs.iter()
+                .try_for_each(|err| -> std::io::Result<()> {
+                    err.violations
+                        .iter()
+                        .try_for_each(|violation| -> std::io::Result<()> {
+                            writeln!(
+                                self.errw,
+                                "{}:{}: {}",
+                                violation.filename, violation.path, violation.message
+                            )
+                        })
+                })
+                .or(Err(TexestError::InternalError))?;
+            return Err(TexestError::InvalidInput);
+        }
+
+        let mut r = Reporter::new(&mut self.rw, self.use_color, self.formatter);
+
+        let result = run_tests(test_case_files, &mut r);
+
+        if let Err(err) = result {
+            return writeln!(self.errw, "internal error: {}", err)
+                .or(Err(TexestError::InternalError));
+        }
+
+        if !result.unwrap().is_all_passed() {
+            return Err(TexestError::TestFailed);
+        }
+
+        Ok(())
     }
-
-    let mut w = std::io::stdout();
-    let mut r = Reporter::new(&mut w, use_color, f);
-
-    let result = run_tests(test_case_files, &mut r);
-
-    if let Err(err) = result {
-        eprintln!("internal error: {}", err);
-        return Err(TexestError::InternalError);
-    }
-
-    if !result.unwrap().is_all_passed() {
-        return Err(TexestError::TestFailed);
-    }
-
-    Ok(())
 }
 
 fn partition_results<T, E>(results: impl Iterator<Item = Result<T, E>>) -> (Vec<T>, Vec<E>) {
@@ -122,4 +149,47 @@ fn partition_results<T, E>(results: impl Iterator<Item = Result<T, E>>) -> (Vec<
     });
 
     (oks, errs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use rstest::rstest;
+    use serde_json::json;
+    use tempfile::NamedTempFile;
+
+    // TODO: Add tests
+    #[rstest]
+    fn run() {
+        let formatter = Formatter::new_json();
+        let mut rw: Vec<u8> = vec![];
+        let mut errw: Vec<u8> = vec![];
+        let runner = Runner::new(true, formatter, &mut rw, &mut errw);
+
+        let mut file = NamedTempFile::new().unwrap();
+        let spec = r#"{ tests: [{ command: ["true"], expect: { status: { eq: 0 } } }]}"#;
+        file.write_all(spec.as_bytes()).unwrap();
+
+        let result = runner.run(vec![Input::File(file.path().to_str().unwrap().to_string())]);
+
+        assert_eq!("", String::from_utf8_lossy(&errw));
+        assert_eq!(
+            json!({
+                "num_test_cases": 1,
+                "num_passed_test_cases": 1,
+                "num_failed_test_cases": 0,
+                "success": true,
+                "test_results": [
+                    {
+                        "name": "true",
+                        "passed": true,
+                        "failures": []
+                    },
+                ]
+            }),
+            serde_json::from_slice::<serde_json::Value>(rw.as_slice()).unwrap(),
+        );
+        assert_eq!(Ok(()), result);
+    }
 }
