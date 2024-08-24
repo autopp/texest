@@ -34,8 +34,8 @@ pub fn run_tests<W: Write>(
 mod tests {
     use crate::{
         reporter::Formatter,
-        runner::run_tests,
         test_case::testutil::{ProcessTemplate, TestCaseTemplate},
+        test_case_runner::run_tests,
     };
 
     use super::*;
