@@ -48,19 +48,20 @@ impl BackgroundExec {
 }
 
 pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
-    command: Vec<String>,
+    command: String,
+    args: Vec<String>,
     stdin: String,
     env: E,
     timeout: Duration,
 ) -> Result<Output, String> {
-    let mut cmd = Command::new(command.first().unwrap())
-        .args(command.get(1..).unwrap())
+    let mut cmd = Command::new(&command)
+        .args(&args)
         .stdin(std::process::Stdio::piped())
         .envs(env)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|err| format!("cannot execute {:?}: {}", command, err))?;
+        .map_err(|err| error_message_of_execution(command, args, err))?;
 
     let mut cmd_stdin = cmd.stdin.take().ok_or("cannot get stdin".to_string())?;
     let _ = tokio::task::spawn(async move { cmd_stdin.write_all(stdin.as_bytes()).await })
@@ -71,20 +72,21 @@ pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
 }
 
 pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
-    command: Vec<String>,
+    command: String,
+    args: Vec<String>,
     stdin: String,
     env: E,
     timeout: Duration,
     wait_condition: &WaitCondition,
 ) -> Result<BackgroundExec, String> {
-    let mut cmd = Command::new(command.first().unwrap())
-        .args(command.get(1..).unwrap())
+    let mut cmd = Command::new(&command)
+        .args(&args)
         .stdin(std::process::Stdio::piped())
         .envs(env)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|err| format!("cannot execute {:?}: {}", command, err))?;
+        .map_err(|err| error_message_of_execution(command, args, err))?;
 
     let mut cmd_stdin = cmd.stdin.take().ok_or("cannot get stdin".to_string())?;
     let _ = tokio::task::spawn(async move { cmd_stdin.write_all(stdin.as_bytes()).await })
@@ -97,6 +99,12 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
         child: cmd,
         timeout,
     })
+}
+
+fn error_message_of_execution(command: String, args: Vec<String>, err: std::io::Error) -> String {
+    let mut command_and_args = vec![command];
+    command_and_args.extend(args);
+    format!("cannot execute {:?}: {}", command_and_args, err)
 }
 
 async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output, String> {
@@ -181,7 +189,8 @@ mod tests {
             #[case] stderr: &str,
         ) {
             let actual = execute_command(
-                vec!["bash".to_string(), "-c".to_string(), command.to_string()],
+                "bash".to_string(),
+                vec!["-c".to_string(), command.to_string()],
                 stdin.to_string(),
                 env,
                 Duration::from_secs(timeout),
@@ -232,7 +241,8 @@ mod tests {
             #[case] stderr: &str,
         ) {
             let bg = execute_background_command(
-                vec!["bash".to_string(), "-c".to_string(), command.to_string()],
+                "bash".to_string(),
+                vec!["-c".to_string(), command.to_string()],
                 stdin.to_string(),
                 env,
                 Duration::from_secs(timeout),

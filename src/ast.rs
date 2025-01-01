@@ -28,7 +28,7 @@ impl Ast for Yaml {
 
 pub type Map<'a> = IndexMap<&'a str, &'a Yaml>;
 
-impl<'a> Ast for Map<'a> {
+impl Ast for Map<'_> {
     fn type_name(&self) -> String {
         "map".to_string()
     }

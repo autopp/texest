@@ -40,7 +40,8 @@ pub enum ProcessModeExpr {
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ProcessExpr {
-    pub command: Vec<Expr>,
+    pub command: Expr,
+    pub args: Vec<Expr>,
     pub stdin: Expr,
     pub env: Vec<(String, Expr)>,
     pub timeout: Duration,
@@ -209,12 +210,11 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
             }
         })
     } else {
+        let process = processes.values().last().unwrap();
+        let mut command_and_args = vec![process.command.clone()];
+        command_and_args.extend(process.args.clone());
         Some(
-            processes
-                .values()
-                .last()
-                .unwrap()
-                .command
+            command_and_args
                 .iter()
                 .map(|x| yash_quote::quote(x))
                 .collect::<Vec<_>>()
@@ -272,21 +272,37 @@ fn eval_process_expr<T: TmpDirSupplier>(
     stderr_matchers: Vec<StreamMatcher>,
     process_expr: &ProcessExpr,
 ) -> Process {
-    let command: Vec<String> = v.in_field("command", |v| {
+    let command = v.in_field("command[0]", |v| {
+        match ctx.eval_expr(&process_expr.command) {
+            Ok(EvalOutput { value, setup_hook }) => {
+                if let Some(hook) = setup_hook {
+                    setup_hooks.push(hook)
+                }
+                v.must_be_string(&value).unwrap_or_default()
+            }
+            Err(message) => {
+                v.add_violation(format!("eval error: {}", message));
+                "".to_string()
+            }
+        }
+    });
+
+    let args: Vec<String> = v.in_field("command", |v| {
         process_expr
-            .command
-            .clone()
-            .into_iter()
+            .args
+            .iter()
             .enumerate()
-            .filter_map(|(i, x)| match ctx.eval_expr(&x) {
+            .filter_map(|(i, x)| match ctx.eval_expr(x) {
                 Ok(EvalOutput { value, setup_hook }) => {
                     if let Some(hook) = setup_hook {
                         setup_hooks.push(hook)
                     }
-                    v.in_index(i, |v| v.must_be_string(&value))
+                    v.in_index(i + 1, |v| v.must_be_string(&value))
                 }
                 Err(message) => {
-                    v.in_index(i, |v| v.add_violation(format!("eval error: {}", message)));
+                    v.in_index(i + 1, |v| {
+                        v.add_violation(format!("eval error: {}", message))
+                    });
                     None
                 }
             })
@@ -378,6 +394,7 @@ fn eval_process_expr<T: TmpDirSupplier>(
 
     Process {
         command,
+        args,
         stdin,
         env,
         status_matchers,
@@ -410,7 +427,8 @@ pub mod testutil {
     use super::TestCaseExpr;
 
     pub struct ProcessExprTemplate {
-        pub command: Vec<Expr>,
+        pub command: Expr,
+        pub args: Vec<Expr>,
         pub stdin: Expr,
         pub env: Vec<(&'static str, Expr)>,
         pub timeout: u64,
@@ -423,6 +441,7 @@ pub mod testutil {
         pub fn build(self) -> ProcessExpr {
             ProcessExpr {
                 command: self.command.clone(),
+                args: self.args.clone(),
                 stdin: self.stdin.clone(),
                 env: self
                     .env
@@ -441,6 +460,7 @@ pub mod testutil {
         fn default() -> Self {
             Self {
                 command: TestCaseExprTemplate::default_command(),
+                args: TestCaseExprTemplate::default_args(),
                 stdin: literal_expr(Yaml::String("".to_string())),
                 env: vec![],
                 timeout: 10,
@@ -542,11 +562,12 @@ pub mod testutil {
         pub const DEFAULT_FILENAME: &'static str = "test.yaml";
         pub const DEFAULT_PATH: &'static str = "$.tests[0]";
 
-        pub fn default_command() -> Vec<Expr> {
-            vec![
-                literal_expr(Yaml::String("echo".to_string())),
-                literal_expr(Yaml::String("hello".to_string())),
-            ]
+        pub fn default_command() -> Expr {
+            literal_expr(Yaml::String("echo".to_string()))
+        }
+
+        pub fn default_args() -> Vec<Expr> {
+            vec![literal_expr(Yaml::String("hello".to_string()))]
         }
 
         pub fn build(self) -> TestCaseExpr {
@@ -622,7 +643,8 @@ mod tests {
             path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
             processes: indexmap! {
                 "main".to_string() => Process {
-                    command: vec!["echo".to_string(), "hello".to_string()],
+                    command: "echo".to_string(),
+                    args: vec!["hello".to_string()],
                     stdin: "".to_string(),
                     env: vec![],
                     timeout: Duration::from_secs(10),
@@ -650,7 +672,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -691,7 +714,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "process1".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -705,7 +729,8 @@ mod tests {
                             stderr_matchers: vec![],
                         },
                         "process2".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -738,7 +763,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "hello".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -771,7 +797,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
                             timeout: Duration::from_secs(10),
@@ -806,7 +833,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -841,7 +869,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -876,7 +905,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -913,7 +943,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -955,13 +986,11 @@ mod tests {
             let given = TestCaseExprTemplate {
                 name: Some(literal_expr(Yaml::String("test".to_string()))),
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("cat".to_string())),
-                        Expr::TmpFile(
-                            "input.txt".to_string(),
-                            Box::new(literal_expr(Yaml::String("hello".to_string()))),
-                        ),
-                    ],
+                    command: literal_expr(Yaml::String("cat".to_string())),
+                    args: vec![Expr::TmpFile(
+                        "input.txt".to_string(),
+                        Box::new(literal_expr(Yaml::String("hello".to_string()))),
+                    )],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -977,8 +1006,8 @@ mod tests {
                 path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                 processes: indexmap! {
                     "main".to_string() => Process {
-                        command: vec![
-                            "cat".to_string(),
+                        command: "cat".to_string(),
+                        args: vec![
                             tmp_file_path_buf.to_str().unwrap().to_string(),
                         ],
                         stdin: "".to_string(),
@@ -1025,7 +1054,8 @@ mod tests {
         #[case("with eval error in command",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    command: vec![literal_expr(Yaml::Boolean(true)), env_var_expr("_undefined")],
+                    command: literal_expr(Yaml::Boolean(true)),
+                    args: vec![env_var_expr("_undefined")],
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -1039,7 +1069,8 @@ mod tests {
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Multi(indexmap! {
                     "process1" => ProcessExprTemplate {
-                        command: vec![literal_expr(Yaml::Boolean(true)), env_var_expr("_undefined")],
+                        command: literal_expr(Yaml::Boolean(true)),
+                        args: vec![env_var_expr("_undefined")],
                         ..Default::default()
                     }
                 }),

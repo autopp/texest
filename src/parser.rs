@@ -186,7 +186,7 @@ pub fn parse(filename: &str, mut reader: impl std::io::Read) -> Result<TestCaseE
 }
 
 fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
-    let command = v
+    let command_and_args = v
         .must_have_seq(m, "command", |v, command| {
             if command.is_empty() {
                 v.add_violation("should not be empty");
@@ -197,6 +197,12 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
         })
         .flatten()
         .unwrap_or_default();
+
+    let (command, args) = command_and_args
+        .split_first()
+        .map(|(command, args)| (command.clone(), args.to_vec()))
+        .unwrap_or_else(|| (Expr::Literal(Yaml::String("true".to_string())), vec![]));
+
     let stdin = v
         .may_have(m, "stdin", parse_expr)
         .unwrap_or(Expr::Literal(Yaml::String("".to_string())));
@@ -242,6 +248,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
 
     ProcessExpr {
         command,
+        args,
         stdin,
         env,
         timeout,
@@ -385,8 +392,8 @@ tests:
         - $env: SUFFIX-", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![
-                        Expr::Literal(Yaml::String("echo".to_string().to_string())),
+                    command: Expr::Literal(Yaml::String("echo".to_string().to_string())),
+                    args: vec![
                         Expr::EnvVar("MESSAGE".to_string(), None),
                         Expr::EnvVar("NAME".to_string(), Some("John\nDoe".to_string())),
                         Expr::EnvVar("SUFFIX".to_string(), Some("".to_string())),
@@ -433,7 +440,8 @@ tests:
       stdin: hello", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![Expr::Literal(Yaml::String("cat".to_string().to_string()))],
+                    command: Expr::Literal(Yaml::String("cat".to_string())),
+                    args: vec![],
                     stdin: literal_expr(Yaml::String("hello".to_string())),
                     ..Default::default()
                 }
@@ -449,7 +457,8 @@ tests:
           message: hello", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![Expr::Literal(Yaml::String("cat".to_string().to_string()))],
+                    command: Expr::Literal(Yaml::String("cat".to_string())),
+                    args: vec![],
                     stdin: Expr::Yaml(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))),
                     ..Default::default()
                 }
@@ -465,7 +474,8 @@ tests:
           message: hello", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: vec![Expr::Literal(Yaml::String("cat".to_string().to_string()))],
+                    command: Expr::Literal(Yaml::String("cat".to_string())),
+                    args: vec![],
                     stdin: Expr::Json(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))),
                     ..Default::default()
                 }
@@ -502,8 +512,8 @@ tests:
                     answer: 42", vec![TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(
                     ProcessExprTemplate {
-                        command: vec![
-                            Expr::Literal(Yaml::String("cat".to_string().to_string())),
+                        command: Expr::Literal(Yaml::String("cat".to_string())),
+                        args: vec![
                             Expr::TmpFile(
                                 "input.yaml".to_string(),
                                 Box::new(Expr::Yaml(Yaml::Hash(mapping(vec![("answer", Yaml::Integer(42))])))),
@@ -528,15 +538,15 @@ tests:
     ", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("hello".to_string())),
                     ],
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
@@ -559,16 +569,16 @@ tests:
     ", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("hello".to_string())),
                     ],
                     mode: ProcessModeExpr::Background(BackgroundConfigExpr { wait_condition: None }),
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
@@ -594,8 +604,8 @@ tests:
     ", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("hello".to_string())),
                     ],
                     mode: ProcessModeExpr::Background(
@@ -609,8 +619,8 @@ tests:
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()
@@ -640,15 +650,15 @@ tests:
     ", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Multi(indexmap! {
                 "process1" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("hello".to_string())),
                     ],
                     ..Default::default()
                 },
                 "process2" => ProcessExprTemplate {
-                    command: vec![
-                        literal_expr(Yaml::String("echo".to_string())),
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![
                         literal_expr(Yaml::String("world".to_string())),
                     ],
                     ..Default::default()

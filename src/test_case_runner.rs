@@ -53,7 +53,8 @@ mod tests {
             name: "success",
             processes: indexmap! {
                 "main" => ProcessTemplate {
-                    command: vec!["true"],
+                    command: "true",
+                    args: vec![],
                     ..Default::default()
                 },
             },
@@ -65,7 +66,8 @@ mod tests {
             name: "failure",
             processes: indexmap! {
                 "main" => ProcessTemplate {
-                    command: vec!["/dev/null"],
+                    command: "/dev/null",
+                    args: vec![],
                     ..Default::default()
                 },
             },
