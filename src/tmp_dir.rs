@@ -37,7 +37,7 @@ pub mod testutil {
         pub tmp_dir: &'a TempDir,
     }
 
-    impl<'a> TmpDirSupplier for StubTmpDirFactory<'a> {
+    impl TmpDirSupplier for StubTmpDirFactory<'_> {
         fn create(&mut self) -> Result<&Path, String> {
             Ok(self.tmp_dir.path())
         }

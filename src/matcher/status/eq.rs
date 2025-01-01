@@ -24,9 +24,8 @@ impl EqMatcher {
     pub fn parse(v: &mut Validator, x: &Yaml) -> Option<Self> {
         v.must_be_uint(x).and_then(|expected| {
             i32::try_from(expected)
-                .map_err(|err| {
+                .inspect_err(|_| {
                     v.add_violation(format!("cannot treat {} as i32", expected));
-                    err
                 })
                 .ok()
                 .map(|expected| Self { expected })
