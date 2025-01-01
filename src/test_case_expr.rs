@@ -209,12 +209,11 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
             }
         })
     } else {
+        let process = processes.values().last().unwrap();
+        let mut command_and_args = vec![process.command.clone()];
+        command_and_args.extend(process.args.clone());
         Some(
-            processes
-                .values()
-                .last()
-                .unwrap()
-                .command
+            command_and_args
                 .iter()
                 .map(|x| yash_quote::quote(x))
                 .collect::<Vec<_>>()
@@ -272,8 +271,8 @@ fn eval_process_expr<T: TmpDirSupplier>(
     stderr_matchers: Vec<StreamMatcher>,
     process_expr: &ProcessExpr,
 ) -> Process {
-    let command: Vec<String> = v.in_field("command", |v| {
-        process_expr
+    let (command, args) = v.in_field("command", |v| {
+        let command_ard_args: Vec<String> = process_expr
             .command
             .clone()
             .into_iter()
@@ -290,7 +289,16 @@ fn eval_process_expr<T: TmpDirSupplier>(
                     None
                 }
             })
-            .collect()
+            .collect();
+
+        (
+            command_ard_args.first().cloned().unwrap_or("".to_string()),
+            if command_ard_args.len() > 1 {
+                command_ard_args[1..].to_vec()
+            } else {
+                vec![]
+            },
+        )
     });
 
     let stdin = v
@@ -378,6 +386,7 @@ fn eval_process_expr<T: TmpDirSupplier>(
 
     Process {
         command,
+        args,
         stdin,
         env,
         status_matchers,
@@ -622,7 +631,8 @@ mod tests {
             path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
             processes: indexmap! {
                 "main".to_string() => Process {
-                    command: vec!["echo".to_string(), "hello".to_string()],
+                    command: "echo".to_string(),
+                    args: vec!["hello".to_string()],
                     stdin: "".to_string(),
                     env: vec![],
                     timeout: Duration::from_secs(10),
@@ -650,7 +660,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -691,7 +702,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "process1".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -705,7 +717,8 @@ mod tests {
                             stderr_matchers: vec![],
                         },
                         "process2".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -738,7 +751,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "hello".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -771,7 +785,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
                             timeout: Duration::from_secs(10),
@@ -806,7 +821,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -841,7 +857,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -876,7 +893,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -913,7 +931,8 @@ mod tests {
                     path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                     processes: indexmap! {
                         "main".to_string() => Process {
-                            command: vec!["echo".to_string(), "hello".to_string()],
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![],
                             timeout: Duration::from_secs(10),
@@ -977,8 +996,8 @@ mod tests {
                 path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
                 processes: indexmap! {
                     "main".to_string() => Process {
-                        command: vec![
-                            "cat".to_string(),
+                        command: "cat".to_string(),
+                        args: vec![
                             tmp_file_path_buf.to_str().unwrap().to_string(),
                         ],
                         stdin: "".to_string(),
