@@ -126,12 +126,16 @@ impl<ReportW: Write, ErrW: Write> Runner<ReportW, ErrW> {
 
         let result = run_tests(test_case_files, &mut r);
 
-        if let Err(err) = result {
-            return writeln!(self.errw, "internal error: {}", err)
-                .or(Err(TexestError::InternalError));
-        }
+        let test_result_summary = match result {
+            Ok(test_result_summary) => test_result_summary,
+            Err(err) => {
+                writeln!(self.errw, "internal error: {}", err)
+                    .or(Err(TexestError::InternalError))?;
+                return Err(TexestError::InternalError);
+            }
+        };
 
-        if !result.unwrap().is_all_passed() {
+        if !test_result_summary.is_all_passed() {
             return Err(TexestError::TestFailed);
         }
 

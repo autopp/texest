@@ -121,7 +121,7 @@ async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output
             let mut stdout: Vec<u8> = vec![];
             child
                 .stdout
-                .unwrap()
+                .ok_or_else(|| "cannot get stdout".to_string())?
                 .read_to_end(&mut stdout)
                 .await
                 .map_err(|err| err.to_string())?;
@@ -129,7 +129,7 @@ async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output
             let mut stderr: Vec<u8> = vec![];
             child
                 .stderr
-                .unwrap()
+                .ok_or_else(|| "cannot get stderr".to_string())?
                 .read_to_end(&mut stderr)
                 .await
                 .map_err(|err| err.to_string())?;

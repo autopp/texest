@@ -110,7 +110,14 @@ impl TestResultSummary {
 
 impl TestCase {
     pub fn run(&self) -> TestResult {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = if let Ok(rt) = tokio::runtime::Runtime::new() {
+            rt
+        } else {
+            return TestResult {
+                name: self.name.clone(),
+                failures: indexmap! { "setup".to_string() => vec!["failed to create runtime".to_string()] },
+            };
+        };
 
         let mut setup_failures = vec![];
         self.setup_hooks.iter().try_for_each(|hook| {
