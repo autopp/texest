@@ -93,7 +93,7 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
         .await
         .map_err(|err| err.to_string())?;
 
-    wait_condition.wait().await?;
+    wait_condition.wait(&mut cmd).await?;
 
     Ok(BackgroundExec {
         child: cmd,

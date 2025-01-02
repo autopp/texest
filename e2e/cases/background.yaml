@@ -15,24 +15,27 @@ tests:
                     trap 'echo goodbye >&2; exit 1' TERM
                     echo hello
                     while true; do true; done
-                background: {}
+                background:
+                  wait_for:
+                    type: stream
+                    pattern: hello
+                    timeout: 1s
               proc2:
                 command:
-                  # TODO: ensure trap is executed in proc1
-                  - sleep
-                  - '1'
+                  - echo
+                  - world
             expect:
               processes:
                 proc1:
                   status:
                     eq: 1
-                  stdout:
-                    eq: "hello\n"
                   stderr:
                     eq: "goodbye\n"
                 proc2:
                   status:
                     eq: 0
+                  stdout:
+                    eq: "world\n"
     expect:
       status:
         eq: 0
