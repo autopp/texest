@@ -177,11 +177,24 @@ mod tests {
             Expr::EnvVar("UNDEFINED_VAR".to_string(), None),
             Err("env var UNDEFINED_VAR is not defined".to_string()))]
         #[case("yaml",
-            Expr::Yaml(Yaml::Hash(mapping(vec![("x", Yaml::Boolean(true))]))),
-            Ok(EvalOutput { value: Yaml::String("---\nx: true".to_string()), setup_hook: None }))]
+            Expr::Yaml(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
+            Ok(
+                EvalOutput {
+                    value: Yaml::String(
+r#"---
+x:
+  - ~
+  - true
+  - 42
+  - 3.14
+  - hello"#.to_string()),
+                    setup_hook: None
+                }
+            )
+        )]
         #[case("json",
-            Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Boolean(true))]))),
-            Ok(EvalOutput { value: Yaml::String("{\"x\":true}".to_string()), setup_hook: None }))]
+            Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
+            Ok(EvalOutput { value: Yaml::String("{\"x\":[null,true,42,3.14,\"hello\"]}".to_string()), setup_hook: None }))]
         fn eval_expr(
             #[case] title: &str,
             #[case] expr: Expr,
