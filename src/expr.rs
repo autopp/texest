@@ -59,12 +59,12 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
                     })
                     .map_err(|err| err.to_string())
             }
-            Expr::Json(v) => serde_json::to_string(&to_json_value(v))
+            Expr::Json(v) => to_json_value(v)
+                .and_then(|v| serde_json::to_string(&v).map_err(|err| err.to_string()))
                 .map(|json| EvalOutput {
                     value: Yaml::String(json),
                     setup_hook: None,
-                })
-                .map_err(|err| err.to_string()),
+                }),
             Expr::TmpFile(filename, expr) => self.eval_expr(expr).and_then(|contents| {
                 contents
                     .value
@@ -97,22 +97,35 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
 }
 
 // FIXME: too naive implementation
-fn to_json_value(yaml: &Yaml) -> serde_json::Value {
+fn to_json_value(yaml: &Yaml) -> Result<serde_json::Value, String> {
     match yaml {
-        Yaml::Null => serde_json::Value::Null,
-        Yaml::Boolean(b) => serde_json::Value::Bool(*b),
-        Yaml::Integer(n) => serde_json::Value::Number(serde_json::Number::from(*n)),
-        Yaml::Real(n) => serde_json::Value::Number(
-            serde_json::Number::from_f64(n.parse().expect("failed to parse float"))
-                .expect("failed to convert to f64"),
-        ),
-        Yaml::String(s) => serde_json::Value::String(s.clone()),
-        Yaml::Array(a) => serde_json::Value::Array(a.iter().map(to_json_value).collect()),
-        Yaml::Hash(h) => serde_json::Value::Object(
-            h.iter()
-                .map(|(k, v)| (k.as_str().unwrap().to_string(), to_json_value(v)))
-                .collect(),
-        ),
+        Yaml::Null => Ok(serde_json::Value::Null),
+        Yaml::Boolean(b) => Ok(serde_json::Value::Bool(*b)),
+        Yaml::Integer(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
+        Yaml::Real(n) => n
+            .parse()
+            .map_err(|err| format!("failed to parse float: {}", err))
+            .and_then(|n| {
+                serde_json::Number::from_f64(n)
+                    .ok_or_else(|| "failed to convert to f64".to_string())
+            })
+            .map(serde_json::Value::Number),
+        Yaml::String(s) => Ok(serde_json::Value::String(s.clone())),
+        Yaml::Array(a) => a
+            .iter()
+            .map(to_json_value)
+            .collect::<Result<_, _>>()
+            .map(serde_json::Value::Array),
+        Yaml::Hash(h) => h
+            .iter()
+            .enumerate()
+            .map(|(i, (k, v))| {
+                k.as_str()
+                    .ok_or_else(|| format!("key at index {i} is not string"))
+                    .and_then(|k| to_json_value(v).map(|v| (k.to_string(), v)))
+            })
+            .collect::<Result<_, _>>()
+            .map(serde_json::Value::Object),
         _ => panic!("unsupported type: {:?}", yaml),
     }
 }
@@ -164,11 +177,24 @@ mod tests {
             Expr::EnvVar("UNDEFINED_VAR".to_string(), None),
             Err("env var UNDEFINED_VAR is not defined".to_string()))]
         #[case("yaml",
-            Expr::Yaml(Yaml::Hash(mapping(vec![("x", Yaml::Boolean(true))]))),
-            Ok(EvalOutput { value: Yaml::String("---\nx: true".to_string()), setup_hook: None }))]
+            Expr::Yaml(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
+            Ok(
+                EvalOutput {
+                    value: Yaml::String(
+r#"---
+x:
+  - ~
+  - true
+  - 42
+  - 3.14
+  - hello"#.to_string()),
+                    setup_hook: None
+                }
+            )
+        )]
         #[case("json",
-            Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Boolean(true))]))),
-            Ok(EvalOutput { value: Yaml::String("{\"x\":true}".to_string()), setup_hook: None }))]
+            Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
+            Ok(EvalOutput { value: Yaml::String("{\"x\":[null,true,42,3.14,\"hello\"]}".to_string()), setup_hook: None }))]
         fn eval_expr(
             #[case] title: &str,
             #[case] expr: Expr,

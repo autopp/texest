@@ -47,9 +47,7 @@ impl SimpleFormatter {
         if !failed.is_empty() {
             writeln!(w, "\nFailures:").map_err(|err| err.to_string())?;
             failed.iter().enumerate().try_for_each(|(i, &tr)| {
-                writeln!(w, "\n{}) {}", i + 1, tr.name)
-                    .map_err(|err| err.to_string())
-                    .unwrap();
+                writeln!(w, "\n{}) {}", i + 1, tr.name).map_err(|err| err.to_string())?;
                 tr.failures.iter().try_for_each(|(name, messages)| {
                     messages
                         .iter()

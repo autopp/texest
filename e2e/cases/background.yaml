@@ -18,8 +18,9 @@ tests:
                 background: {}
               proc2:
                 command:
-                  - 'cat'
-                stdin: 'hello'
+                  # TODO: ensure trap is executed in proc1
+                  - sleep
+                  - '1'
             expect:
               processes:
                 proc1:
@@ -30,8 +31,8 @@ tests:
                   stderr:
                     eq: "goodbye\n"
                 proc2:
-                  stdout:
-                    eq: "hello"
+                  status:
+                    eq: 0
     expect:
       status:
         eq: 0

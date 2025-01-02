@@ -19,7 +19,15 @@ impl HttpCondition {
     pub async fn wait(&self) -> Result<(), String> {
         tokio::time::sleep(self.initial_delay).await;
 
-        let client = Client::builder().timeout(self.timeout).build().unwrap();
+        let client = Client::builder()
+            .timeout(self.timeout)
+            .build()
+            .map_err(|err| {
+                format!(
+                    "failed to create HTTP client with timeout {:#?}: {}",
+                    self.timeout, err
+                )
+            })?;
         let url = format!("http://localhost:{}{}", self.port, self.path);
 
         let check = || async {
