@@ -115,7 +115,7 @@ impl TestResultSummary {
 }
 
 impl TestCase {
-    pub fn run(&self) -> TestResult {
+    pub fn run(&self, tee_stdout: bool, tee_stderr: bool) -> TestResult {
         let rt = if let Ok(rt) = tokio::runtime::Runtime::new() {
             rt
         } else {
@@ -164,12 +164,12 @@ impl TestCase {
                         .await;
 
                         if let Ok(output) = &exec_result {
-                            if process.tee_stdout {
+                            if process.tee_stdout || tee_stdout {
                                 println!("=== captured stdout ===");
                                 stdout().write_all(output.stdout.as_bytes()).unwrap();
                                 println!("\n=======================");
                             }
-                            if process.tee_stderr {
+                            if process.tee_stderr || tee_stderr {
                                 println!("=== captured stderr ===");
                                 stdout().write_all(output.stderr.as_bytes()).unwrap();
                                 println!("\n=======================");
@@ -588,7 +588,7 @@ mod tests {
                 #[case] given: TestCaseTemplate,
                 #[case] expected: TestResult,
             ) {
-                let actual = given.build().run();
+                let actual = given.build().run(false, false);
 
                 assert_eq!(expected, actual, "{}", title);
             }
@@ -655,7 +655,7 @@ mod tests {
                         .unwrap_or_default(),
                 };
 
-                assert_eq!(expected, given.run(), "{}", title);
+                assert_eq!(expected, given.run(false, false), "{}", title);
             }
 
             #[rstest]
@@ -714,7 +714,7 @@ mod tests {
                 }
                 .build();
 
-                let result = given.run();
+                let result = given.run(false, false);
                 assert_eq!(
                     TestResult {
                         name: DEFAULT_NAME.into(),
@@ -744,7 +744,7 @@ mod tests {
                 }
                 .build();
 
-                let actual = given.run();
+                let actual = given.run(false, false);
 
                 assert_eq!(DEFAULT_NAME, actual.name);
                 assert_eq!(1, actual.failures.len());

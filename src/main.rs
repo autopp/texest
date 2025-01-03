@@ -38,6 +38,10 @@ struct Args {
     color: Color,
     #[clap(value_enum, long = "format", default_value_t = Format::Simple)]
     format: Format,
+    #[clap(long = "tee-stdout", default_value = "false")]
+    tee_stdout: bool,
+    #[clap(long = "tee-stderr", default_value = "false")]
+    tee_stderr: bool,
 }
 
 fn main() {
@@ -74,7 +78,16 @@ fn main() {
         Format::Json => Formatter::new_json(),
     };
 
-    if let Err(err) = Runner::new(use_color, f, std::io::stdout(), std::io::stderr()).run(inputs) {
+    if let Err(err) = Runner::new(
+        use_color,
+        f,
+        std::io::stdout(),
+        std::io::stderr(),
+        args.tee_stdout,
+        args.tee_stderr,
+    )
+    .run(inputs)
+    {
         std::process::exit(err.to_exit_status());
     }
 }
