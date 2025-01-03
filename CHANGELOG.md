@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.8.0
+
+- Add `--tee-stdout` and `--tee-stderr` options to enable tee mode from command line
+- Format output of tee mode
+- Add background process waiting condition `stream`
+- Add more error handling (by reducing `unwrap()`)
+- Remove codes for test from release build
+
 ## v0.7.0
 
 - Add stream matcher `match_regex`

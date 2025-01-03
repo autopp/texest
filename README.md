@@ -26,6 +26,8 @@ Arguments:
 Options:
       --color <COLOR>    [default: auto] [possible values: auto, always, never]
       --format <FORMAT>  [default: simple] [possible values: simple, json]
+      --tee-stdout       
+      --tee-stderr       
   -h, --help             Print help
 ```
 
