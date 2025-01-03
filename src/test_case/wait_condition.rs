@@ -1,7 +1,11 @@
 mod http;
 mod sleep;
+mod stream;
 
 use std::time::Duration;
+
+use stream::StreamCondition;
+use tokio::process::Child;
 
 use crate::ast::Map;
 use crate::validator::Validator;
@@ -14,15 +18,17 @@ pub use self::sleep::SleepCondition;
 pub enum WaitCondition {
     Sleep(SleepCondition),
     Http(HttpCondition),
+    Stream(StreamCondition),
     #[cfg(test)]
     SuccessStub(indexmap::IndexMap<String, saphyr::Yaml>),
 }
 
 impl WaitCondition {
-    pub async fn wait(&self) -> Result<(), String> {
+    pub async fn wait(&self, cmd: &mut Child) -> Result<(), String> {
         match self {
             WaitCondition::Sleep(sleep_condition) => sleep_condition.wait().await,
             WaitCondition::Http(http_condition) => http_condition.wait().await,
+            WaitCondition::Stream(stream_condition) => stream_condition.wait(cmd).await,
             #[cfg(test)]
             WaitCondition::SuccessStub(_) => Ok(()),
         }
@@ -32,6 +38,7 @@ impl WaitCondition {
         match name {
             "sleep" => SleepCondition::parse(v, params).map(WaitCondition::Sleep),
             "http" => HttpCondition::parse(v, params).map(WaitCondition::Http),
+            "stream" => StreamCondition::parse(v, params).map(WaitCondition::Stream),
             #[cfg(test)]
             "success_stub" => Some(WaitCondition::SuccessStub(
                 params
@@ -78,6 +85,13 @@ mod tests {
             initial_delay: Duration::from_secs(0),
             interval: Duration::from_secs(0),
             max_retry: 3,
+            timeout: Duration::from_secs(1),
+        })), vec![])]
+    #[case("with stream", "stream", indexmap! {
+            "pattern" => Yaml::String("hello".to_string()),
+            "timeout" => Yaml::String("1s".to_string()),
+        }, Some(WaitCondition::Stream(StreamCondition {
+            pattern: regex::Regex::new("hello").unwrap(),
             timeout: Duration::from_secs(1),
         })), vec![])]
     #[case("with unknown wait condition", "unknown", indexmap! {}, None, vec![(".type", "\"unknown\" is not valid wait condition type")])]
