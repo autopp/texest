@@ -3,6 +3,7 @@ pub mod teardown_hook;
 pub mod wait_condition;
 
 use std::{
+    ffi::OsString,
     fmt::Debug,
     io::{stdout, Write},
     ops::ControlFlow,
@@ -149,9 +150,9 @@ impl TestCase {
         }
 
         let exec_results = rt.block_on(async {
-            let mut executions: Vec<Execution> = vec![];
+            let mut executions: Vec<(&String, Execution)> = vec![];
 
-            for (_, process) in self.processes.iter() {
+            for (process_name, process) in self.processes.iter() {
                 let execution = match &process.mode {
                     ProcessMode::Foreground => {
                         let exec_result = execute_command(
@@ -164,16 +165,12 @@ impl TestCase {
                         .await;
 
                         if let Ok(output) = &exec_result {
-                            if process.tee_stdout || tee_stdout {
-                                println!("=== captured stdout ===");
-                                stdout().write_all(output.stdout.as_bytes()).unwrap();
-                                println!("\n=======================");
-                            }
-                            if process.tee_stderr || tee_stderr {
-                                println!("=== captured stderr ===");
-                                stdout().write_all(output.stderr.as_bytes()).unwrap();
-                                println!("\n=======================");
-                            }
+                            tee_stream_of_output(
+                                process_name,
+                                output,
+                                tee_stdout || process.tee_stdout,
+                                tee_stderr || process.tee_stderr,
+                            );
                         }
 
                         Execution::Foreground(exec_result)
@@ -186,6 +183,10 @@ impl TestCase {
                             process.env.clone(),
                             process.timeout,
                             &cfg.wait_condition,
+                            (
+                                tee_stdout || process.tee_stdout,
+                                tee_stderr || process.tee_stderr,
+                            ),
                         )
                         .await;
 
@@ -193,18 +194,36 @@ impl TestCase {
                     }
                 };
 
-                executions.push(execution);
+                executions.push((process_name, execution));
             }
 
-            async fn collect_exec_result(execution: Execution) -> Result<Output, String> {
+            async fn collect_exec_result(
+                process_name: &str,
+                execution: Execution,
+            ) -> Result<Output, String> {
                 match execution {
                     Execution::Foreground(result) => result,
-                    Execution::Background(Ok(bg)) => bg.terminate().await,
+                    Execution::Background(Ok(bg)) => {
+                        let tee_stdout = bg.tee_stdout;
+                        let tee_stderr = bg.tee_stderr;
+                        let result = bg.terminate().await;
+
+                        if let Ok(output) = &result {
+                            tee_stream_of_output(process_name, output, tee_stdout, tee_stderr);
+                        }
+
+                        result
+                    }
                     Execution::Background(Err(err)) => Err(err),
                 }
             }
 
-            join_all(executions.into_iter().map(collect_exec_result)).await
+            join_all(
+                executions
+                    .into_iter()
+                    .map(|(process_name, e)| collect_exec_result(process_name, e)),
+            )
+            .await
         });
 
         let mut failures = indexmap! {};
@@ -313,6 +332,26 @@ fn run_stream_matchers(matchers: &[StreamMatcher], stream: &[u8]) -> Vec<String>
                 .unwrap_or_else(Some)
         })
         .collect()
+}
+
+fn tee_stream_of_output(process_name: &str, output: &Output, tee_stdout: bool, tee_stderr: bool) {
+    if tee_stdout || tee_stderr {
+        println!("== {} ==", process_name);
+    }
+    tee_stream("stdout", &output.stdout, tee_stdout);
+    tee_stream("stderr", &output.stderr, tee_stderr);
+}
+
+fn tee_stream(stream_name: &str, stream: &OsString, tee: bool) {
+    if tee {
+        let bytes = stream.as_bytes();
+        println!("=== captured {} ===", stream_name);
+        stdout().write_all(bytes).unwrap();
+        if !bytes.is_empty() {
+            println!();
+        }
+        println!("=======================");
+    }
 }
 
 #[cfg(test)]

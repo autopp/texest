@@ -30,11 +30,13 @@ pub struct Output {
 pub struct BackgroundExec {
     child: tokio::process::Child,
     timeout: Duration,
+    pub tee_stdout: bool,
+    pub tee_stderr: bool,
 }
 
 impl BackgroundExec {
     pub async fn terminate(self) -> Result<Output, String> {
-        let BackgroundExec { child, timeout } = self;
+        let BackgroundExec { child, timeout, .. } = self;
         let pid = child
             .id()
             .map(|id| nix::unistd::Pid::from_raw(id as i32))
@@ -78,6 +80,7 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
     env: E,
     timeout: Duration,
     wait_condition: &WaitCondition,
+    tee: (bool, bool),
 ) -> Result<BackgroundExec, String> {
     let mut cmd = Command::new(&command)
         .args(&args)
@@ -95,9 +98,13 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
 
     wait_condition.wait(&mut cmd).await?;
 
+    let (tee_stdout, tee_stderr) = tee;
+
     Ok(BackgroundExec {
         child: cmd,
         timeout,
+        tee_stdout,
+        tee_stderr,
     })
 }
 
@@ -247,6 +254,7 @@ mod tests {
                 env,
                 Duration::from_secs(timeout),
                 &wait_condition,
+                (false, false),
             )
             .await
             .unwrap();
