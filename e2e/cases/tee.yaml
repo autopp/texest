@@ -1,0 +1,31 @@
+
+tests:
+  - name: 'with tee config'
+    command:
+      - $env: TEXEST
+      - "-"
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - 'bash'
+              - '-c'
+              - |
+                echo hello
+                echo goodbye >&2
+                echo world
+                echo -n world >&2
+            tee_stdout: true
+            tee_stderr: true
+    expect:
+      stdout:
+        contain: |
+          === captured stdout ===
+          hello
+          world
+
+          =======================
+          === captured stderr ===
+          goodbye
+          world
+          =======================

@@ -243,8 +243,8 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
             ProcessModeExpr::Background(BackgroundConfigExpr { wait_condition })
         })
         .unwrap_or(ProcessModeExpr::Foreground);
-    let tee_stdout = v.may_have_bool(m, "teeStdout").unwrap_or(false);
-    let tee_stderr = v.may_have_bool(m, "teeStderr").unwrap_or(false);
+    let tee_stdout = v.may_have_bool(m, "tee_stdout").unwrap_or(false);
+    let tee_stderr = v.may_have_bool(m, "tee_stderr").unwrap_or(false);
 
     ProcessExpr {
         command,
@@ -422,8 +422,8 @@ tests:
     - command:
         - echo
         - hello
-      teeStdout: true
-      teeStderr: true", vec![TestCaseExprTemplate {
+      tee_stdout: true
+      tee_stderr: true", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
             ProcessExprTemplate {
                     tee_stdout: true,
