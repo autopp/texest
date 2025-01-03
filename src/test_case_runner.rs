@@ -8,6 +8,8 @@ use crate::{
 pub fn run_tests<W: Write>(
     test_case_files: Vec<TestCaseFile>,
     reporter: &mut Reporter<W>,
+    tee_stdout: bool,
+    tee_stderr: bool,
 ) -> Result<TestResultSummary, String> {
     reporter.on_run_start()?;
     let test_results = test_case_files
@@ -15,7 +17,7 @@ pub fn run_tests<W: Write>(
         .flat_map(|test_case_file| test_case_file.test_cases)
         .map(|test_case| {
             reporter.on_test_case_start(&test_case)?;
-            let r = test_case.run();
+            let r = test_case.run(tee_stdout, tee_stderr);
             reporter.on_test_case_end(&r)?;
             Ok::<TestResult, String>(r)
         })
@@ -103,7 +105,7 @@ mod tests {
 
         assert_eq!(
             Ok(expected_summary),
-            run_tests(test_case_files, &mut reporter)
+            run_tests(test_case_files, &mut reporter, false, false)
         );
 
         let expected_output = "\x1b[32m.\x1b[0m\x1b[31mF\x1b[0m

@@ -36,15 +36,26 @@ pub struct Runner<ReportW: Write, ErrW: Write> {
     formatter: Formatter,
     rw: ReportW,
     errw: ErrW,
+    tee_stdout: bool,
+    tee_stderr: bool,
 }
 
 impl<ReportW: Write, ErrW: Write> Runner<ReportW, ErrW> {
-    pub fn new(use_color: bool, formatter: Formatter, rw: ReportW, errw: ErrW) -> Self {
+    pub fn new(
+        use_color: bool,
+        formatter: Formatter,
+        rw: ReportW,
+        errw: ErrW,
+        tee_stdout: bool,
+        tee_stderr: bool,
+    ) -> Self {
         Self {
             use_color,
             formatter,
             rw,
             errw,
+            tee_stdout,
+            tee_stderr,
         }
     }
 
@@ -124,7 +135,7 @@ impl<ReportW: Write, ErrW: Write> Runner<ReportW, ErrW> {
 
         let mut r = Reporter::new(&mut self.rw, self.use_color, self.formatter);
 
-        let result = run_tests(test_case_files, &mut r);
+        let result = run_tests(test_case_files, &mut r, self.tee_stdout, self.tee_stderr);
 
         let test_result_summary = match result {
             Ok(test_result_summary) => test_result_summary,
@@ -169,7 +180,7 @@ mod tests {
         let formatter = Formatter::new_json();
         let mut rw: Vec<u8> = vec![];
         let mut errw: Vec<u8> = vec![];
-        let runner = Runner::new(true, formatter, &mut rw, &mut errw);
+        let runner = Runner::new(true, formatter, &mut rw, &mut errw, false, false);
 
         let mut file = NamedTempFile::new().unwrap();
         let spec = r#"{ tests: [{ command: ["true"], expect: { status: { eq: 0 } } }]}"#;
