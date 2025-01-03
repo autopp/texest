@@ -2,7 +2,13 @@ pub mod setup_hook;
 pub mod teardown_hook;
 pub mod wait_condition;
 
-use std::{fmt::Debug, ops::ControlFlow, os::unix::ffi::OsStrExt, time::Duration};
+use std::{
+    fmt::Debug,
+    io::{stdout, Write},
+    ops::ControlFlow,
+    os::unix::ffi::OsStrExt,
+    time::Duration,
+};
 
 use futures::future::join_all;
 use indexmap::{indexmap, IndexMap};
@@ -159,10 +165,14 @@ impl TestCase {
 
                         if let Ok(output) = &exec_result {
                             if process.tee_stdout {
-                                println!("{}", output.stdout.to_string_lossy());
+                                println!("=== captured stdout ===");
+                                stdout().write_all(output.stdout.as_bytes()).unwrap();
+                                println!("\n=======================");
                             }
                             if process.tee_stderr {
-                                println!("{}", output.stderr.to_string_lossy());
+                                println!("=== captured stderr ===");
+                                stdout().write_all(output.stderr.as_bytes()).unwrap();
+                                println!("\n=======================");
                             }
                         }
 
