@@ -20,6 +20,7 @@ tests:
     expect:
       stdout:
         contain: |
+          == main ==
           === captured stdout ===
           hello
           world
@@ -49,6 +50,7 @@ tests:
     expect:
       stdout:
         contain: |
+          == main ==
           === captured stdout ===
           hello
           world
@@ -57,4 +59,32 @@ tests:
           === captured stderr ===
           goodbye
           world
+          =======================
+  - name: 'with background process'
+    command:
+      - $env: TEXEST
+      - "-"
+      - "--tee-stdout"
+      - "--tee-stderr"
+    stdin:
+      $yaml:
+        tests:
+          - processes:
+              bg:
+                command:
+                  - echo
+                  - hello
+                background: {}
+              fg:
+                command:
+                  - 'true'
+    expect:
+      stdout:
+        contain: |
+          == bg ==
+          === captured stdout ===
+          hello
+
+          =======================
+          === captured stderr ===
           =======================
