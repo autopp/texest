@@ -174,9 +174,8 @@ mod tests {
     use serde_json::json;
     use tempfile::NamedTempFile;
 
-    // TODO: Add tests
     #[rstest]
-    fn run() {
+    fn when_all_case_passed() {
         let formatter = Formatter::new_json();
         let mut rw: Vec<u8> = vec![];
         let mut errw: Vec<u8> = vec![];
@@ -206,5 +205,107 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(rw.as_slice()).unwrap(),
         );
         assert_eq!(Ok(()), result);
+    }
+
+    #[rstest]
+    fn when_failure_occured() {
+        let formatter = Formatter::new_json();
+        let mut rw: Vec<u8> = vec![];
+        let mut errw: Vec<u8> = vec![];
+        let runner = Runner::new(true, formatter, &mut rw, &mut errw, false, false);
+
+        let mut file = NamedTempFile::new().unwrap();
+        let spec = r#"{ tests: [{ command: ["true"], expect: { status: { eq: 1 } } }]}"#;
+        file.write_all(spec.as_bytes()).unwrap();
+
+        let result = runner.run(vec![Input::File(file.path().to_str().unwrap().to_string())]);
+
+        assert_eq!("", String::from_utf8_lossy(&errw));
+        assert_eq!(
+            json!({
+                "num_test_cases": 1,
+                "num_passed_test_cases": 0,
+                "num_failed_test_cases": 1,
+                "success": false,
+                "test_results": [
+                    {
+                        "name": "true",
+                        "passed": false,
+                        "failures": [
+                            {
+                                "messages": ["should be 1, but got 0"],
+                                "subject": "main:status"
+                            }
+                        ]
+                    },
+                ]
+            }),
+            serde_json::from_slice::<serde_json::Value>(rw.as_slice()).unwrap(),
+        );
+        assert_eq!(Err(TexestError::TestFailed), result);
+    }
+
+    #[rstest]
+    fn when_file_is_not_exists() {
+        let formatter = Formatter::new_json();
+        let mut rw: Vec<u8> = vec![];
+        let mut errw: Vec<u8> = vec![];
+        let runner = Runner::new(true, formatter, &mut rw, &mut errw, false, false);
+
+        let result = runner.run(vec![Input::File("not_exist.yaml".to_string())]);
+
+        assert_eq!(
+            "not_exist.yaml: cannot open: No such file or directory (os error 2)\n",
+            String::from_utf8_lossy(&errw)
+        );
+        assert_eq!(Err(TexestError::InvalidInput), result);
+    }
+
+    #[rstest]
+    fn when_invalid_syntax_given() {
+        let formatter = Formatter::new_json();
+        let mut rw: Vec<u8> = vec![];
+        let mut errw: Vec<u8> = vec![];
+        let runner = Runner::new(true, formatter, &mut rw, &mut errw, false, false);
+
+        let mut file = NamedTempFile::new().unwrap();
+        let spec = r#"{ tests: [{ expect: { status: { eq: 0 } } }]}"#;
+        file.write_all(spec.as_bytes()).unwrap();
+
+        let path = file.path().to_str().unwrap().to_string();
+        let result = runner.run(vec![Input::File(path.clone())]);
+
+        assert_eq!(
+            format!(
+                "{}: parse error\n{}:$.tests[0]: should have .command as seq\n",
+                path, path
+            ),
+            String::from_utf8_lossy(&errw)
+        );
+        assert_eq!(Err(TexestError::InvalidInput), result);
+    }
+
+    #[rstest]
+    fn when_eval_error_occured() {
+        let formatter = Formatter::new_json();
+        let mut rw: Vec<u8> = vec![];
+        let mut errw: Vec<u8> = vec![];
+        let runner = Runner::new(true, formatter, &mut rw, &mut errw, false, false);
+
+        let mut file = NamedTempFile::new().unwrap();
+        let spec = r#"{ tests: [{ command: [{ $env: "UNDEFINED_ENV" }],  expect: { status: { eq: 0 } } }]}"#;
+        file.write_all(spec.as_bytes()).unwrap();
+
+        let path = file.path().to_str().unwrap().to_string();
+        let result = runner.run(vec![Input::File(path.clone())]);
+
+        assert_eq!(
+            format!(
+                "{}:$.tests[0].command[0]: eval error: env var UNDEFINED_ENV is not defined\n",
+                path
+            ),
+            String::from_utf8_lossy(&errw)
+        );
+        assert_eq!(Err(TexestError::InvalidInput), result);
     }
 }
