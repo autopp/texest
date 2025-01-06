@@ -68,6 +68,17 @@ pub fn parse(filename: &str, mut reader: impl std::io::Read) -> Result<TestCaseE
                     v.must_be_map(test).map(|test| {
                         let name = v.may_have(&test, "name", parse_expr);
 
+                        let let_decls = v
+                            .may_have_map(&test, "let", |v, let_map| {
+                                let_map
+                                    .iter()
+                                    .map(|(name, value)| {
+                                        (name.to_string(), parse_expr(v, value))
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
                         let processes: ProcessesExpr = v
                             .may_have(&test, "processes", |v, processes| {
                                 v.must_be_map(processes)
@@ -152,6 +163,7 @@ pub fn parse(filename: &str, mut reader: impl std::io::Read) -> Result<TestCaseE
                             name,
                             filename: v.filename.clone(),
                             path: v.current_path(),
+                            let_decls,
                             processes,
                             processes_matchers,
                             files_matchers,
@@ -345,7 +357,7 @@ mod tests {
         use crate::{
             ast::testuitl::mapping,
             expr::{
-                testutil::{env_var_expr, literal_expr},
+                testutil::{env_var_expr, literal_expr, var_expr},
                 Expr,
             },
             test_case_expr::{
@@ -536,12 +548,20 @@ tests:
                 ..Default::default()
         }])]
         #[case(
-            "with command contains var",
+            "with command contains var & let",
             "
 tests:
-    - command:
+    - let:
+        message1: hello
+        message2:
+            $var: message1
+      command:
         - echo
         - $var: message", vec![TestCaseExprTemplate {
+                let_decls: indexmap! {
+                    "message1" => literal_expr(Yaml::String("hello".to_string())),
+                    "message2" => var_expr("message1"),
+                },
                 processes: ProcessesExprTemplate::Single(
                     ProcessExprTemplate {
                         command: Expr::Literal(Yaml::String("echo".to_string())),

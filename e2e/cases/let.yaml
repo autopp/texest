@@ -1,0 +1,44 @@
+tests:
+  - command:
+      - $env: TEXEST
+      - "-"
+    stdin:
+      $yaml:
+        tests:
+          - let:
+              arg: hello
+              expected: 0
+            command:
+              - echo
+              - -n
+              - $var: arg
+            expect:
+              status:
+                eq:
+                  $var: expected
+              stdout:
+                eq:
+                  $var: arg
+    expect:
+      status:
+        eq: 0
+      stderr:
+        eq: ""
+  - command:
+      - $env: TEXEST
+      - "-"
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - -n
+              - $var: arg
+            expect:
+              status:
+                eq: 0
+    expect:
+      status:
+        eq: 2
+      stderr:
+        contain: "<stdin>:$.tests[0].command[2]: eval error: variable arg is not defined"

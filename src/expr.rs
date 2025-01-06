@@ -167,6 +167,10 @@ pub mod testutil {
     pub fn env_var_expr(name: impl Into<String>) -> Expr {
         Expr::EnvVar(name.into(), None)
     }
+
+    pub fn var_expr(name: impl Into<String>) -> Expr {
+        Expr::Var(name.into())
+    }
 }
 
 #[cfg(test)]
