@@ -74,6 +74,7 @@ pub struct TestCaseExpr {
     pub name: Option<Expr>,
     pub filename: String,
     pub path: String,
+    pub let_decls: IndexMap<String, Expr>,
     pub processes: ProcessesExpr,
     pub processes_matchers: ProcessesMatchersExpr,
     pub files_matchers: IndexMap<String, IndexMap<String, Expr>>,
@@ -101,6 +102,19 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
     let mut ctx = Context::new(tmp_dir_supplier);
     let mut setup_hooks: Vec<SetupHook> = vec![];
+
+    test_case_expr.let_decls.iter().for_each(|(name, expr)| {
+        if let Err(message) = ctx.eval_expr(expr).and_then(|output| {
+            if let Some(hook) = output.setup_hook {
+                setup_hooks.push(hook);
+            }
+            ctx.define_var(name.clone(), output.value)
+        }) {
+            v.in_field(name, |v| {
+                v.add_violation(format!("eval error: {}", message))
+            });
+        }
+    });
 
     let mut processes_matchers: IndexMap<
         String,
@@ -560,6 +574,7 @@ pub mod testutil {
         pub name: Option<Expr>,
         pub filename: &'static str,
         pub path: &'static str,
+        pub let_decls: IndexMap<&'static str, Expr>,
         pub processes: ProcessesExprTemplate,
         pub processes_matchers: ProcessesMatchersExprTemplate,
         pub files_matchers: IndexMap<&'static str, IndexMap<&'static str, Expr>>,
@@ -583,6 +598,11 @@ pub mod testutil {
                 name: self.name.clone(),
                 filename: self.filename.to_string(),
                 path: self.path.to_string(),
+                let_decls: self
+                    .let_decls
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
                 processes: self.processes.build(),
                 processes_matchers: self.processes_matchers.build(),
                 files_matchers: self
@@ -605,6 +625,7 @@ pub mod testutil {
                 name: None,
                 filename: TestCaseExprTemplate::DEFAULT_FILENAME,
                 path: TestCaseExprTemplate::DEFAULT_PATH,
+                let_decls: indexmap! {},
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate::default()),
                 processes_matchers: ProcessesMatchersExprTemplate::Multi(indexmap! {}),
                 files_matchers: indexmap! {},
@@ -618,7 +639,7 @@ mod tests {
     use super::*;
     mod eval_test_case_expr {
         use crate::{
-            expr::testutil::{env_var_expr, literal_expr},
+            expr::testutil::{env_var_expr, literal_expr, var_expr},
             matcher::testutil::{
                 new_status_test_success, new_stream_test_success, PARSE_ERROR_VIOLATION_MESSAGE,
                 TEST_PARSE_ERROR_NAME, TEST_SUCCESS_NAME, TEST_SUCCESS_NAME_WITH_NOT,
@@ -809,6 +830,45 @@ mod tests {
                             args: vec!["hello".to_string()],
                             stdin: "".to_string(),
                             env: vec![("MESSAGE1".to_string(), "hello".to_string()), ("MESSAGE2".to_string(), "world".to_string())],
+                            timeout: Duration::from_secs(10),
+                            mode: ProcessMode::Foreground,
+                            tee_stdout: false,
+                            tee_stderr: false,
+                            status_matchers: vec![],
+                            stdout_matchers: vec![],
+                            stderr_matchers: vec![],
+                        }
+                    },
+                    files_matchers: indexmap! {},
+                    setup_hooks: vec![],
+                    teardown_hooks: vec![],
+                },
+            ]
+        )]
+        #[case("with let case",
+            TestCaseExprTemplate {
+                let_decls: indexmap! {
+                    "MESSAGE" => literal_expr(Yaml::String("hello".to_string())),
+                    "MESSAGE2" => var_expr("MESSAGE"),
+                },
+                processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
+                    command: literal_expr(Yaml::String("echo".to_string())),
+                    args: vec![var_expr("MESSAGE"), var_expr("MESSAGE2")],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            vec![
+                TestCase {
+                    name: "echo hello hello".to_string(),
+                    filename: TestCaseExprTemplate::DEFAULT_FILENAME.to_string(),
+                    path: TestCaseExprTemplate::DEFAULT_PATH.to_string(),
+                    processes: indexmap! {
+                        "main".to_string() => Process {
+                            command: "echo".to_string(),
+                            args: vec!["hello".to_string(), "hello".to_string()],
+                            stdin: "".to_string(),
+                            env: vec![],
                             timeout: Duration::from_secs(10),
                             mode: ProcessMode::Foreground,
                             tee_stdout: false,
@@ -1108,14 +1168,15 @@ mod tests {
         #[case("with eval error in env",
             TestCaseExprTemplate {
                 processes: ProcessesExprTemplate::Single(ProcessExprTemplate {
-                    env: vec![("MESSAGE1", literal_expr(Yaml::Boolean(true))), ("MESSAGE2", env_var_expr("_undefined"))],
+                    env: vec![("MESSAGE1", literal_expr(Yaml::Boolean(true))), ("MESSAGE2", env_var_expr("_undefined_env")), ("MESSAGE3", var_expr("_undefined_var"))],
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             vec![
                 violation(".env.MESSAGE1", "should be string, but is bool"),
-                violation(".env.MESSAGE2", "eval error: env var _undefined is not defined"),
+                violation(".env.MESSAGE2", "eval error: env var _undefined_env is not defined"),
+                violation(".env.MESSAGE3", "eval error: variable _undefined_var is not defined"),
             ]
         )]
         #[case("with eval error in background.wait_for",
