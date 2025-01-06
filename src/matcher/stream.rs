@@ -12,6 +12,8 @@ use saphyr::Yaml;
 
 use crate::validator::Validator;
 
+use super::parse_name;
+
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum StreamMatcher {
     Eq(eq::EqMatcher),
@@ -36,10 +38,12 @@ impl StreamMatcher {
         }
     }
 
-    pub fn parse(v: &mut Validator, name: &str, param: &Yaml) -> Option<Self> {
+    pub fn parse(v: &mut Validator, name: &str, param: &Yaml) -> Option<(Self, bool)> {
+        let (name, expected_passed) = parse_name(name);
+
         #[cfg(test)]
         if let Some(m) = super::testutil::parse_test_matcher(v, name, param) {
-            return m.map(StreamMatcher::Test);
+            return m.map(|m| (StreamMatcher::Test(m), expected_passed));
         }
 
         match name {
@@ -61,6 +65,7 @@ impl StreamMatcher {
                 None
             }
         }
+        .map(|m| (m, expected_passed))
     }
 }
 
@@ -90,18 +95,19 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case("with eq", "eq", Yaml::String("hello".to_string()), Some(StreamMatcher::Eq(EqMatcher { expected: "hello".into() })), vec![])]
-    #[case("with contain", "contain", Yaml::String("hello".to_string()), Some(StreamMatcher::Contain(ContainMatcher { expected: "hello".into() })), vec![])]
+    #[case("with eq", "eq", Yaml::String("hello".to_string()), Some((StreamMatcher::Eq(EqMatcher { expected: "hello".into() }), true)), vec![])]
+    #[case("with not.eq", "not.eq", Yaml::String("hello".to_string()), Some((StreamMatcher::Eq(EqMatcher { expected: "hello".into() }), false)), vec![])]
+    #[case("with contain", "contain", Yaml::String("hello".to_string()), Some((StreamMatcher::Contain(ContainMatcher { expected: "hello".into() }), true)), vec![])]
     #[case("with eq_json",
         "eq_json",
         Yaml::String(r#"{"message": "hello"}"#.to_string()),
         {
             let mut m = serde_json::Map::new();
             m.insert("message".to_string(), serde_json::Value::String("hello".to_string()));
-            Some(StreamMatcher::EqJson(EqJsonMatcher {
+            Some((StreamMatcher::EqJson(EqJsonMatcher {
                 expected: serde_json::Value::Object(m),
                 original: r#"{"message": "hello"}"#.into(),
-            }))
+            }), true))
         },
         vec![])]
     #[case("with include_json",
@@ -110,25 +116,25 @@ mod tests {
         {
             let mut m = serde_json::Map::new();
             m.insert("message".to_string(), serde_json::Value::String("hello".to_string()));
-            Some(StreamMatcher::IncludeJson(IncludeJsonMatcher {
+            Some((StreamMatcher::IncludeJson(IncludeJsonMatcher {
                 expected: serde_json::Value::Object(m),
                 original: r#"{"message": "hello"}"#.into(),
-            }))
+            }), true))
         },
         vec![])]
     #[case("with match_regex",
         "match_regex",
         Yaml::String("hel*o".to_string()),
-        Some(StreamMatcher::MatchRegex(MatchRegexMatcher {
+        Some((StreamMatcher::MatchRegex(MatchRegexMatcher {
             expected: Regex::new("hel*o").unwrap(),
-        })),
+        }), true)),
         vec![])]
     #[case("with unknown name", "unknown", Yaml::Boolean(true), None, vec![("", "stream matcher \"unknown\" is not defined")])]
     fn parse(
         #[case] title: &str,
         #[case] name: &str,
         #[case] param: Yaml,
-        #[case] expected_value: Option<StreamMatcher>,
+        #[case] expected_value: Option<(StreamMatcher, bool)>,
         #[case] expected_violation: Vec<(&str, &str)>,
     ) {
         let (mut v, violation) = testutil::new_validator();

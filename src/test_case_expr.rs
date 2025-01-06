@@ -85,7 +85,11 @@ pub struct TestCaseExprFile {
     pub test_case_exprs: Vec<TestCaseExpr>,
 }
 
-type ProcessMatchersTuple = (Vec<StatusMatcher>, Vec<StreamMatcher>, Vec<StreamMatcher>);
+type ProcessMatchersTuple = (
+    Vec<(StatusMatcher, bool)>,
+    Vec<(StreamMatcher, bool)>,
+    Vec<(StreamMatcher, bool)>,
+);
 
 const DEFAULT_PROCESS_NAME: &str = "main";
 
@@ -240,13 +244,17 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     }
 }
 
-fn eval_matcher_exprs<T, TS: TmpDirSupplier, F: Fn(&mut Validator, &str, &Yaml) -> Option<T>>(
+fn eval_matcher_exprs<
+    T,
+    TS: TmpDirSupplier,
+    F: Fn(&mut Validator, &str, &Yaml) -> Option<(T, bool)>,
+>(
     v: &mut Validator,
     ctx: &mut Context<'_, TS>,
     subject: &str,
     parse: F,
     matcher_exprs: &IndexMap<String, Expr>,
-) -> Vec<T> {
+) -> Vec<(T, bool)> {
     v.in_field(subject, |v| {
         matcher_exprs
             .iter()
@@ -267,9 +275,9 @@ fn eval_process_expr<T: TmpDirSupplier>(
     v: &mut Validator,
     ctx: &mut Context<'_, T>,
     setup_hooks: &mut Vec<SetupHook>,
-    status_matchers: Vec<StatusMatcher>,
-    stdout_matchers: Vec<StreamMatcher>,
-    stderr_matchers: Vec<StreamMatcher>,
+    status_matchers: Vec<(StatusMatcher, bool)>,
+    stdout_matchers: Vec<(StreamMatcher, bool)>,
+    stderr_matchers: Vec<(StreamMatcher, bool)>,
     process_expr: &ProcessExpr,
 ) -> Process {
     let command = v.in_field("command[0]", |v| {
@@ -613,7 +621,7 @@ mod tests {
             expr::testutil::{env_var_expr, literal_expr},
             matcher::testutil::{
                 new_status_test_success, new_stream_test_success, PARSE_ERROR_VIOLATION_MESSAGE,
-                TEST_PARSE_ERROR_NAME, TEST_SUCCESS_NAME,
+                TEST_PARSE_ERROR_NAME, TEST_SUCCESS_NAME, TEST_SUCCESS_NAME_WITH_NOT,
             },
             test_case::{setup_hook::SetupHook, BackgroundConfig, ProcessMode},
             test_case_expr::testutil::{
@@ -821,6 +829,7 @@ mod tests {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     status_matcher_exprs: indexmap!{
                         TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
+                        TEST_SUCCESS_NAME_WITH_NOT => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -841,7 +850,10 @@ mod tests {
                             mode: ProcessMode::Foreground,
                             tee_stdout: false,
                             tee_stderr: false,
-                            status_matchers: vec!(new_status_test_success(Yaml::Boolean(true))),
+                            status_matchers: vec![
+                                (new_status_test_success(Yaml::Boolean(true)), true),
+                                (new_status_test_success(Yaml::Boolean(true)), false),
+                            ],
                             stdout_matchers: vec![],
                             stderr_matchers: vec![],
                         }
@@ -857,6 +869,7 @@ mod tests {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stdout_matcher_exprs: indexmap!{
                         TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
+                        TEST_SUCCESS_NAME_WITH_NOT => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -878,7 +891,10 @@ mod tests {
                             tee_stdout: false,
                             tee_stderr: false,
                             status_matchers: vec![],
-                            stdout_matchers: vec![new_stream_test_success(Yaml::Boolean(true))],
+                            stdout_matchers: vec![
+                                (new_stream_test_success(Yaml::Boolean(true)), true),
+                                (new_stream_test_success(Yaml::Boolean(true)), false),
+                            ],
                             stderr_matchers: vec![],
                         }
                     },
@@ -893,6 +909,7 @@ mod tests {
                 processes_matchers: ProcessesMatchersExprTemplate::Single(ProcessMatchersExprTemplate {
                     stderr_matcher_exprs: indexmap! {
                         TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
+                        TEST_SUCCESS_NAME_WITH_NOT => literal_expr(Yaml::Boolean(true)),
                     },
                     ..Default::default()
                 }),
@@ -915,7 +932,10 @@ mod tests {
                             tee_stderr: false,
                             status_matchers: vec![],
                             stdout_matchers: vec![],
-                            stderr_matchers: vec![new_stream_test_success(Yaml::Boolean(true))],
+                            stderr_matchers: vec![
+                                (new_stream_test_success(Yaml::Boolean(true)), true),
+                                (new_stream_test_success(Yaml::Boolean(true)), false),
+                            ],
                         }
                     },
                     files_matchers: indexmap! {},
@@ -932,6 +952,7 @@ mod tests {
                 files_matchers: indexmap! {
                     "/tmp/output.txt" => indexmap! {
                         TEST_SUCCESS_NAME => literal_expr(Yaml::Boolean(true)),
+                        TEST_SUCCESS_NAME_WITH_NOT => literal_expr(Yaml::Boolean(true)),
                     },
                 },
                 ..Default::default()
@@ -957,7 +978,10 @@ mod tests {
                         }
                     },
                     files_matchers: indexmap! {
-                        "/tmp/output.txt".to_string() => vec![new_stream_test_success(Yaml::Boolean(true))],
+                        "/tmp/output.txt".to_string() => vec![
+                            (new_stream_test_success(Yaml::Boolean(true)), true),
+                            (new_stream_test_success(Yaml::Boolean(true)), false),
+                        ],
                     },
                     setup_hooks: vec![],
                     teardown_hooks: vec![],

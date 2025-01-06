@@ -3,6 +3,8 @@ mod eq;
 use eq::EqMatcher;
 use saphyr::Yaml;
 
+use super::parse_name;
+
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum StatusMatcher {
     Eq(eq::EqMatcher),
@@ -19,10 +21,12 @@ impl StatusMatcher {
         }
     }
 
-    pub fn parse(v: &mut super::Validator, name: &str, param: &Yaml) -> Option<Self> {
+    pub fn parse(v: &mut super::Validator, name: &str, param: &Yaml) -> Option<(Self, bool)> {
+        let (name, expected_passed) = parse_name(name);
+
         #[cfg(test)]
         if let Some(m) = super::testutil::parse_test_matcher(v, name, param) {
-            return m.map(StatusMatcher::Test);
+            return m.map(|m| (StatusMatcher::Test(m), expected_passed));
         }
 
         match name {
@@ -32,6 +36,7 @@ impl StatusMatcher {
                 None
             }
         }
+        .map(|m| (m, expected_passed))
     }
 }
 
@@ -60,13 +65,14 @@ mod tests {
     use saphyr::Yaml;
 
     #[rstest]
-    #[case("with eq", "eq", Yaml::Integer(1), Some(StatusMatcher::Eq(eq::EqMatcher { expected: 1 })), vec![])]
+    #[case("with eq", "eq", Yaml::Integer(1), Some((StatusMatcher::Eq(eq::EqMatcher { expected: 1 }), true)), vec![])]
+    #[case("with not.eq", "not.eq", Yaml::Integer(1), Some((StatusMatcher::Eq(eq::EqMatcher { expected: 1 }), false)), vec![])]
     #[case("with unknown name", "unknown", Yaml::Boolean(true), None, vec![("", "status matcher \"unknown\" is not defined")])]
     fn parse(
         #[case] title: &str,
         #[case] name: &str,
         #[case] param: Yaml,
-        #[case] expected_value: Option<StatusMatcher>,
+        #[case] expected_value: Option<(StatusMatcher, bool)>,
         #[case] expected_violation: Vec<(&str, &str)>,
     ) {
         let (mut v, violation) = testutil::new_validator();
