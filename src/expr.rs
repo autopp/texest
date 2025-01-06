@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use indexmap::IndexMap;
 use once_cell::sync::OnceCell;
 use saphyr::{Yaml, YamlEmitter};
 
@@ -13,11 +14,13 @@ pub enum Expr {
     Yaml(Yaml),
     Json(Yaml),
     TmpFile(String, Box<Expr>),
+    Var(String),
 }
 
 pub struct Context<'a, T: TmpDirSupplier> {
     tmp_dir_cell: OnceCell<PathBuf>,
     tmp_dir_supplier: &'a mut T,
+    variables: IndexMap<String, Yaml>,
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
@@ -31,6 +34,7 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
         Context {
             tmp_dir_cell: OnceCell::new(),
             tmp_dir_supplier,
+            variables: IndexMap::new(),
         }
     }
 
@@ -84,7 +88,27 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
                         })
                     })
             }),
+            Expr::Var(name) => self.lookup_var(name).map(|value| EvalOutput {
+                value,
+                setup_hook: None,
+            }),
         }
+    }
+
+    pub fn define_var(&mut self, name: String, value: Yaml) -> Result<(), String> {
+        if self.variables.contains_key(&name) {
+            Err(format!("variable {} is already defined", name))
+        } else {
+            self.variables.insert(name, value);
+            Ok(())
+        }
+    }
+
+    fn lookup_var(&self, name: &str) -> Result<Yaml, String> {
+        self.variables
+            .get(name)
+            .cloned()
+            .ok_or_else(|| format!("variable {} is not defined", name))
     }
 
     fn force_tmp_dir(&mut self) -> Result<&PathBuf, String> {
@@ -192,6 +216,12 @@ x:
                 }
             )
         )]
+        #[case("defined var",
+            Expr::Var("answer".to_string()),
+            Ok(EvalOutput { value: Yaml::Integer(42), setup_hook: None }))]
+        #[case("undefined var",
+            Expr::Var("undefined".to_string()),
+            Err("variable undefined is not defined".to_string()))]
         #[case("json",
             Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
             Ok(EvalOutput { value: Yaml::String("{\"x\":[null,true,42,3.14,\"hello\"]}".to_string()), setup_hook: None }))]
@@ -205,6 +235,8 @@ x:
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
             let mut ctx = Context::new(&mut tmp_dir_supplier);
+            ctx.define_var("answer".to_string(), Yaml::Integer(42))
+                .unwrap();
 
             let actual = ctx.eval_expr(&expr);
 
@@ -261,6 +293,47 @@ x:
                 actual
             );
             assert!(read_dir(tmp_dir_path).unwrap().next().is_none());
+        }
+
+        #[rstest]
+        fn lookup_var_when_not_defined() {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let ctx = Context::new(&mut tmp_dir_suppilier);
+
+            assert_eq!(
+                Err("variable not_defined is not defined".to_string()),
+                ctx.lookup_var("not_defined")
+            );
+        }
+
+        #[rstest]
+        fn lookup_var_when_defined() {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut ctx = Context::new(&mut tmp_dir_suppilier);
+
+            assert_eq!(
+                Ok(()),
+                ctx.define_var("answer".to_string(), Yaml::Integer(42))
+            );
+            assert_eq!(Ok(Yaml::Integer(42)), ctx.lookup_var("answer"));
+        }
+
+        #[rstest]
+        fn define_var_when_already_defined() {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut ctx = Context::new(&mut tmp_dir_suppilier);
+
+            assert_eq!(
+                Ok(()),
+                ctx.define_var("answer".to_string(), Yaml::Integer(42))
+            );
+            assert_eq!(
+                Err("variable answer is already defined".to_string()),
+                ctx.define_var("answer".to_string(), Yaml::Integer(43))
+            );
         }
     }
 }
