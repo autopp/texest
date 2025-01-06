@@ -21,6 +21,46 @@ tests:
     expect:
       status:
         eq: 0
+  - name: 'stream include_json matcher with matched output (not expected)'
+    command:
+      - $env: TEXEST
+      - '-'
+      - '--format'
+      - 'json'
+    stdin:
+      $yaml:
+        tests:
+          - name: "include_json with wrong output (not expected)"
+            command:
+              - echo
+              - $json:
+                  message: hello
+                  nums: [1, 2, 3]
+                  passed: true
+            expect:
+              stdout:
+                not.include_json:
+                  $json:
+                    message: "hello"
+                    nums: [1, 2]
+    expect:
+      status:
+        eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 1
+            num_passed_test_cases: 0
+            num_failed_test_cases: 1
+            success: false
+            test_results:
+              - name: "include_json with wrong output (not expected)"
+                passed: false
+                failures:
+                  - subject: main:stdout
+                    messages:
+                      - |-
+                        should not include {"message":"hello","nums":[1,2]} as JSON, but got it
   - name: 'stream include_json matcher with wrong output'
     command:
       - $env: TEXEST
@@ -71,3 +111,27 @@ tests:
                                 2
                             actual:
                                 0
+  - name: 'stream include_json matcher with wrong output (not expected)'
+    command:
+      - $env: TEXEST
+      - '-'
+      - --format
+      - json
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - $json:
+                  message: world
+                  nums: [1, 0, 3]
+                  passed: true
+            expect:
+              stdout:
+                not.include_json:
+                  $json:
+                    message: "hello"
+                    nums: [1, 2]
+    expect:
+      status:
+        eq: 0

@@ -15,6 +15,38 @@ tests:
     expect:
       status:
         eq: 0
+  - name: 'stream eq matcher with matched output (not expected)'
+    command:
+      - $env: TEXEST
+      - '-'
+      - '--format'
+      - 'json'
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - hello
+            expect:
+              stdout:
+                not.eq: "hello\n"
+    expect:
+      status:
+        eq: 1
+      stdout:
+        eq_json:
+          $json:
+            num_test_cases: 1
+            num_passed_test_cases: 0
+            num_failed_test_cases: 1
+            success: false
+            test_results:
+              - name: 'echo hello'
+                passed: false
+                failures:
+                  - subject: main:stdout
+                    messages:
+                      - "should not be \"hello\n\", but got it"
   - name: 'stream eq matcher with wrong output'
     command:
       - $env: TEXEST
@@ -51,3 +83,21 @@ tests:
 
                         -goodbye
                         +hello
+  - name: 'stream eq matcher with wrong output (not expected)'
+    command:
+      - $env: TEXEST
+      - '-'
+      - --format
+      - json
+    stdin:
+      $yaml:
+        tests:
+          - command:
+              - echo
+              - 'hello'
+            expect:
+              stdout:
+                not.eq: "goodbye\n"
+    expect:
+      status:
+        eq: 0

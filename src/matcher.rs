@@ -6,6 +6,16 @@ use crate::validator::Validator;
 pub use status::StatusMatcher;
 pub use stream::StreamMatcher;
 
+const NOT_PREFIX: &str = "not.";
+
+pub(in crate::matcher) fn parse_name(name: &str) -> (&str, bool) {
+    if let Some(name) = name.strip_prefix(NOT_PREFIX) {
+        (name, false)
+    } else {
+        (name, true)
+    }
+}
+
 #[cfg(test)]
 pub mod testutil {
     use std::fmt::Debug;
@@ -76,6 +86,7 @@ pub mod testutil {
     }
 
     pub const TEST_SUCCESS_NAME: &str = "test_success";
+    pub const TEST_SUCCESS_NAME_WITH_NOT: &str = "not.test_success";
     pub const TEST_FAILURE_NAME: &str = "test_failure";
     pub const TEST_ERROR_NAME: &str = "test_error";
     pub const TEST_PARSE_ERROR_NAME: &str = "test_parse_error";
