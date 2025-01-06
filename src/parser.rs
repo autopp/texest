@@ -260,6 +260,7 @@ fn parse_process(v: &mut Validator, m: &Map) -> ProcessExpr {
 
 static ENV_VAR_EXPR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(?ms)\A([a-zA-Z_][a-zA-Z0-9_]*)(?:-(.*))?\z").unwrap());
+static VAR_EXPR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap());
 fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
     if v.may_be_string(x).is_some() {
         return Expr::Literal(x.clone());
@@ -294,6 +295,16 @@ fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
                         .must_have(&m, "contents", parse_expr)
                         .unwrap_or_else(|| Expr::Literal(Yaml::Boolean(false)));
                     Expr::TmpFile(filename, Box::new(contents))
+                })
+            }),
+            "var" => v.in_field("$var", |v| {
+                v.must_be_string(value).and_then(|s| {
+                    if VAR_EXPR_RE.is_match(&s) {
+                        Some(Expr::Var(s))
+                    } else {
+                        v.add_violation(format!("should be valid var name (got \"{}\")", s));
+                        None
+                    }
                 })
             }),
             _ => None,
@@ -519,6 +530,22 @@ tests:
                                 Box::new(Expr::Yaml(Yaml::Hash(mapping(vec![("answer", Yaml::Integer(42))])))),
                             ),
                         ],
+                        ..Default::default()
+                    }
+                ),
+                ..Default::default()
+        }])]
+        #[case(
+            "with command contains var",
+            "
+tests:
+    - command:
+        - echo
+        - $var: message", vec![TestCaseExprTemplate {
+                processes: ProcessesExprTemplate::Single(
+                    ProcessExprTemplate {
+                        command: Expr::Literal(Yaml::String("echo".to_string())),
+                        args: vec![Expr::Var("message".to_string())],
                         ..Default::default()
                     }
                 ),
@@ -796,6 +823,8 @@ tests:
         #[case("when $tmp_file dosen't have filename", "tests: [{command: [cat, {$tmp_file: {contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .filename as string")])]
         #[case("when $tmp_file has filename as not string", "tests: [{command: [cat, {$tmp_file: {filename: 42, contents: hello}}]}]", vec![("$.tests[0].command[1].$tmp_file.filename", "should be string, but is uint")])]
         #[case("when $tmp_file dosen't have contents", "tests: [{command: [cat, {$tmp_file: {filename: input.txt}}]}]", vec![("$.tests[0].command[1].$tmp_file", "should have .contents")])]
+        #[case("when $env is not valid var name", "tests: [{command: [cat, {$var: \"MESS AGE\"}]}]", vec![("$.tests[0].command[1].$var", "should be valid var name (got \"MESS AGE\")")])]
+        #[case("when $env is not string", "tests: [{command: [cat, {$var: 42}]}]", vec![("$.tests[0].command[1].$var", "should be string, but is uint")])]
         fn error_case(
             #[case] title: &str,
             #[case] input: &str,
