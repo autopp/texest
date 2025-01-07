@@ -309,6 +309,7 @@ fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
                     Expr::TmpFile(filename, Box::new(contents))
                 })
             }),
+            "tmp_port" => Some(Expr::TmpPort),
             "var" => v.in_field("$var", |v| {
                 v.must_be_string(value).and_then(|s| {
                     if VAR_EXPR_RE.is_match(&s) {
@@ -542,6 +543,22 @@ tests:
                                 Box::new(Expr::Yaml(Box::new(literal_expr(Yaml::Hash(mapping(vec![("answer", Yaml::Integer(42))])))))),
                             ),
                         ],
+                        ..Default::default()
+                    }
+                ),
+                ..Default::default()
+        }])]
+        #[case(
+            "with command contains tmp_file",
+            "
+tests:
+    - command:
+        - cat
+        - $tmp_port: {}", vec![TestCaseExprTemplate {
+                processes: ProcessesExprTemplate::Single(
+                    ProcessExprTemplate {
+                        command: Expr::Literal(Yaml::String("cat".to_string())),
+                        args: vec![Expr::TmpPort],
                         ..Default::default()
                     }
                 ),

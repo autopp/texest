@@ -1,5 +1,7 @@
 use std::{fs::File, io::Write};
 
+use indexmap::indexmap;
+
 use crate::{
     parser::{self, parse},
     reporter::{Formatter, Reporter},
@@ -90,13 +92,20 @@ impl<ReportW: Write, ErrW: Write> Runner<ReportW, ErrW> {
         }
 
         let mut tmp_dir_supplier = tmp_dir::TmpDirFactory::new();
+        let mut tmp_port_reserver = indexmap! {};
 
         let (test_case_files, errs): (Vec<TestCaseFile>, Vec<TestExprError>) = test_case_expr_files
             .iter()
             .map(|test_case_expr_file| {
                 let (test_cases, errs) =
                     partition_results(test_case_expr_file.test_case_exprs.iter().map(
-                        |test_case_expr| eval_test_expr(&mut tmp_dir_supplier, test_case_expr),
+                        |test_case_expr| {
+                            eval_test_expr(
+                                &mut tmp_dir_supplier,
+                                &mut tmp_port_reserver,
+                                test_case_expr,
+                            )
+                        },
                     ));
 
                 (
@@ -135,6 +144,7 @@ impl<ReportW: Write, ErrW: Write> Runner<ReportW, ErrW> {
 
         let mut r = Reporter::new(&mut self.rw, self.use_color, self.formatter);
 
+        drop(tmp_port_reserver);
         let result = run_tests(test_case_files, &mut r, self.tee_stdout, self.tee_stderr);
 
         let test_result_summary = match result {

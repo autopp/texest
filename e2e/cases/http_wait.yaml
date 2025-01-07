@@ -6,19 +6,24 @@ tests:
     stdin:
       $yaml:
         tests:
-          - processes:
+          - let:
+              port:
+                $tmp_port: {}
+            processes:
               server:
                 command:
                   - $env: SERVERIFY-serverify
                   - --port
-                  - "4567"
+                  - $json: # convert to str
+                      $var: port
                   - $tmp_file:
                       filename: serverify.yaml
                       contents: 'paths: {}'
                 background:
                   wait_for:
                     type: http
-                    port: 4567
+                    port:
+                      $var: port
                     path: /health
                     initial_delay: 100ms
             expect:
