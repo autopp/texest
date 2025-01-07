@@ -298,8 +298,8 @@ fn parse_expr(v: &mut Validator, x: &Yaml) -> Expr {
                         })
                 })
             }),
-            "yaml" => Some(Expr::Yaml(value.clone())),
-            "json" => Some(Expr::Json(value.clone())),
+            "yaml" => Some(Expr::Yaml(Box::new(parse_expr(v, value)))),
+            "json" => Some(Expr::Json(Box::new(parse_expr(v, value)))),
             "tmp_file" => v.in_field("$tmp_file", |v| {
                 v.must_be_map(value).map(|m| {
                     let filename = v.must_have_string(&m, "filename").unwrap_or_default();
@@ -482,7 +482,7 @@ tests:
                 ProcessExprTemplate {
                     command: Expr::Literal(Yaml::String("cat".to_string())),
                     args: vec![],
-                    stdin: Expr::Yaml(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))),
+                    stdin: Expr::Yaml(Box::new(literal_expr(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))))),
                     ..Default::default()
                 }
             ),
@@ -499,7 +499,7 @@ tests:
                 ProcessExprTemplate {
                     command: Expr::Literal(Yaml::String("cat".to_string())),
                     args: vec![],
-                    stdin: Expr::Json(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))),
+                    stdin: Expr::Json(Box::new(literal_expr(Yaml::Hash(mapping(vec![("message", Yaml::String("hello".to_string()))]))))),
                     ..Default::default()
                 }
             ),
@@ -539,7 +539,7 @@ tests:
                         args: vec![
                             Expr::TmpFile(
                                 "input.yaml".to_string(),
-                                Box::new(Expr::Yaml(Yaml::Hash(mapping(vec![("answer", Yaml::Integer(42))])))),
+                                Box::new(Expr::Yaml(Box::new(literal_expr(Yaml::Hash(mapping(vec![("answer", Yaml::Integer(42))])))))),
                             ),
                         ],
                         ..Default::default()

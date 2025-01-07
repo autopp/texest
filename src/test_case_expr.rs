@@ -105,9 +105,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
 
     test_case_expr.let_decls.iter().for_each(|(name, expr)| {
         if let Err(message) = ctx.eval_expr(expr).and_then(|output| {
-            if let Some(hook) = output.setup_hook {
-                setup_hooks.push(hook);
-            }
+            setup_hooks.extend(output.setup_hooks);
             ctx.define_var(name.clone(), output.value)
         }) {
             v.in_field(name, |v| {
@@ -216,10 +214,11 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
 
     let name = if let Some(name_expr) = &test_case_expr.name {
         v.in_field("name", |v| match ctx.eval_expr(name_expr) {
-            Ok(EvalOutput { value, setup_hook }) => {
-                if let Some(hook) = setup_hook {
-                    setup_hooks.push(hook)
-                }
+            Ok(EvalOutput {
+                value,
+                setup_hooks: setup_hook,
+            }) => {
+                setup_hooks.extend(setup_hook);
                 v.must_be_string(&value)
             }
             Err(message) => {
@@ -296,10 +295,11 @@ fn eval_process_expr<T: TmpDirSupplier>(
 ) -> Process {
     let command = v.in_field("command[0]", |v| {
         match ctx.eval_expr(&process_expr.command) {
-            Ok(EvalOutput { value, setup_hook }) => {
-                if let Some(hook) = setup_hook {
-                    setup_hooks.push(hook)
-                }
+            Ok(EvalOutput {
+                value,
+                setup_hooks: setup_hook,
+            }) => {
+                setup_hooks.extend(setup_hook);
                 v.must_be_string(&value).unwrap_or_default()
             }
             Err(message) => {
@@ -315,10 +315,11 @@ fn eval_process_expr<T: TmpDirSupplier>(
             .iter()
             .enumerate()
             .filter_map(|(i, x)| match ctx.eval_expr(x) {
-                Ok(EvalOutput { value, setup_hook }) => {
-                    if let Some(hook) = setup_hook {
-                        setup_hooks.push(hook)
-                    }
+                Ok(EvalOutput {
+                    value,
+                    setup_hooks: output_setup_hooks,
+                }) => {
+                    setup_hooks.extend(output_setup_hooks);
                     v.in_index(i + 1, |v| v.must_be_string(&value))
                 }
                 Err(message) => {
@@ -333,10 +334,11 @@ fn eval_process_expr<T: TmpDirSupplier>(
 
     let stdin = v
         .in_field("stdin", |v| match ctx.eval_expr(&process_expr.stdin) {
-            Ok(EvalOutput { value, setup_hook }) => {
-                if let Some(hook) = setup_hook {
-                    setup_hooks.push(hook)
-                }
+            Ok(EvalOutput {
+                value,
+                setup_hooks: output_setup_hooks,
+            }) => {
+                setup_hooks.extend(output_setup_hooks);
                 v.must_be_string(&value)
             }
             Err(message) => {
@@ -352,10 +354,11 @@ fn eval_process_expr<T: TmpDirSupplier>(
             .iter()
             .filter_map(|(name, expr)| {
                 match ctx.eval_expr(expr) {
-                    Ok(EvalOutput { value, setup_hook }) => {
-                        if let Some(hook) = setup_hook {
-                            setup_hooks.push(hook)
-                        }
+                    Ok(EvalOutput {
+                        value,
+                        setup_hooks: output_setup_hooks,
+                    }) => {
+                        setup_hooks.extend(output_setup_hooks);
                         v.in_field(name, |v| v.must_be_string(&value))
                     }
                     Err(message) => {
@@ -382,10 +385,11 @@ fn eval_process_expr<T: TmpDirSupplier>(
                                 .params
                                 .iter()
                                 .map(|(k, expr)| match ctx.eval_expr(expr) {
-                                    Ok(EvalOutput { value, setup_hook }) => {
-                                        if let Some(hook) = setup_hook {
-                                            setup_hooks.push(hook)
-                                        }
+                                    Ok(EvalOutput {
+                                        value,
+                                        setup_hooks: output_setup_hooks,
+                                    }) => {
+                                        setup_hooks.extend(output_setup_hooks);
                                         Some((k, value))
                                     }
                                     Err(message) => {
