@@ -11,8 +11,8 @@ use crate::{test_case::setup_hook::SetupHook, tmp_dir::TmpDirSupplier};
 pub enum Expr {
     Literal(Yaml),
     EnvVar(String, Option<String>),
-    Yaml(Yaml),
-    Json(Yaml),
+    Yaml(Box<Expr>),
+    Json(Box<Expr>),
     TmpFile(String, Box<Expr>),
     Var(String),
 }
@@ -26,7 +26,7 @@ pub struct Context<'a, T: TmpDirSupplier> {
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct EvalOutput {
     pub value: Yaml,
-    pub setup_hook: Option<SetupHook>,
+    pub setup_hooks: Vec<SetupHook>,
 }
 
 impl<'a, T: TmpDirSupplier> Context<'a, T> {
@@ -42,33 +42,35 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
         match expr {
             Expr::Literal(v) => Ok(EvalOutput {
                 value: v.clone(),
-                setup_hook: None,
+                setup_hooks: vec![],
             }),
             Expr::EnvVar(name, default) => std::env::var_os(name)
                 .map(|value| Yaml::String(value.to_string_lossy().to_string()))
                 .or_else(|| default.clone().map(Yaml::String))
                 .map(|value| EvalOutput {
                     value,
-                    setup_hook: None,
+                    setup_hooks: vec![],
                 })
                 .ok_or_else(|| format!("env var {} is not defined", name)),
-            Expr::Yaml(v) => {
+            Expr::Yaml(e) => self.eval_expr(e).and_then(|output| {
                 let mut buf = String::new();
                 let mut emitter = YamlEmitter::new(&mut buf);
                 emitter
-                    .dump(v)
+                    .dump(&output.value)
                     .map(|_| EvalOutput {
                         value: Yaml::String(buf),
-                        setup_hook: None,
+                        setup_hooks: output.setup_hooks,
                     })
                     .map_err(|err| err.to_string())
-            }
-            Expr::Json(v) => to_json_value(v)
-                .and_then(|v| serde_json::to_string(&v).map_err(|err| err.to_string()))
-                .map(|json| EvalOutput {
-                    value: Yaml::String(json),
-                    setup_hook: None,
-                }),
+            }),
+            Expr::Json(e) => self.eval_expr(e).and_then(|output| {
+                to_json_value(&output.value)
+                    .and_then(|v| serde_json::to_string(&v).map_err(|err| err.to_string()))
+                    .map(|json| EvalOutput {
+                        value: Yaml::String(json),
+                        setup_hooks: output.setup_hooks,
+                    })
+            }),
             Expr::TmpFile(filename, expr) => self.eval_expr(expr).and_then(|contents| {
                 contents
                     .value
@@ -80,17 +82,17 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
 
                             EvalOutput {
                                 value: Yaml::String(path.to_string_lossy().to_string()),
-                                setup_hook: Some(SetupHook::new_tmp_file(
+                                setup_hooks: vec![SetupHook::new_tmp_file(
                                     path,
                                     contents.to_string(),
-                                )),
+                                )],
                             }
                         })
                     })
             }),
             Expr::Var(name) => self.lookup_var(name).map(|value| EvalOutput {
                 value,
-                setup_hook: None,
+                setup_hooks: vec![],
             }),
         }
     }
@@ -187,6 +189,7 @@ mod tests {
         use super::*;
         use pretty_assertions::assert_eq;
         use rstest::*;
+        use testutil::literal_expr;
 
         const ENV_VAR_NAME: &str = "EVAL_EXPR_TEST_VAR";
         const ENV_VAR_VALUE: &str = "hello world";
@@ -194,18 +197,18 @@ mod tests {
         #[rstest]
         #[case("literal",
             Expr::Literal(Yaml::Boolean(true)),
-            Ok(EvalOutput { value: Yaml::Boolean(true), setup_hook: None }))]
+            Ok(EvalOutput { value: Yaml::Boolean(true), setup_hooks: vec![] }))]
         #[case("defined env var",
             Expr::EnvVar(ENV_VAR_NAME.to_string(), None),
-            Ok(EvalOutput { value: Yaml::String(ENV_VAR_VALUE.to_string()), setup_hook: None }))]
+            Ok(EvalOutput { value: Yaml::String(ENV_VAR_VALUE.to_string()), setup_hooks: vec![] }))]
         #[case("undefined env var with default value",
             Expr::EnvVar("UNDEFINED_VAR".to_string(), Some("default value".to_string())),
-            Ok(EvalOutput { value: Yaml::String("default value".to_string()), setup_hook: None }))]
+            Ok(EvalOutput { value: Yaml::String("default value".to_string()), setup_hooks: vec![] }))]
         #[case("undefined env var without default value",
             Expr::EnvVar("UNDEFINED_VAR".to_string(), None),
             Err("env var UNDEFINED_VAR is not defined".to_string()))]
         #[case("yaml",
-            Expr::Yaml(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
+            Expr::Yaml(Box::new(literal_expr(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))))),
             Ok(
                 EvalOutput {
                     value: Yaml::String(
@@ -216,19 +219,19 @@ x:
   - 42
   - 3.14
   - hello"#.to_string()),
-                    setup_hook: None
+                    setup_hooks: vec![]
                 }
             )
         )]
         #[case("defined var",
             Expr::Var("answer".to_string()),
-            Ok(EvalOutput { value: Yaml::Integer(42), setup_hook: None }))]
+            Ok(EvalOutput { value: Yaml::Integer(42), setup_hooks: vec![] }))]
         #[case("undefined var",
             Expr::Var("undefined".to_string()),
             Err("variable undefined is not defined".to_string()))]
         #[case("json",
-            Expr::Json(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))),
-            Ok(EvalOutput { value: Yaml::String("{\"x\":[null,true,42,3.14,\"hello\"]}".to_string()), setup_hook: None }))]
+            Expr::Json(Box::new(literal_expr(Yaml::Hash(mapping(vec![("x", Yaml::Array(vec![Yaml::Null, Yaml::Boolean(true), Yaml::Integer(42), Yaml::Real("3.14".to_string()), Yaml::String("hello".to_string())]))]))))),
+            Ok(EvalOutput { value: Yaml::String("{\"x\":[null,true,42,3.14,\"hello\"]}".to_string()), setup_hooks: vec![] }))]
         fn eval_expr(
             #[case] title: &str,
             #[case] expr: Expr,
@@ -268,7 +271,7 @@ x:
             assert_eq!(tmp_dir_path.join(filename), actual_path);
             assert!(!actual_path.exists());
 
-            actual.setup_hook.unwrap().setup().unwrap();
+            actual.setup_hooks.first().unwrap().setup().unwrap();
             assert_eq!("hello world", fs::read_to_string(actual_path).unwrap());
         }
 
