@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{net::TcpListener, path::PathBuf};
 
 use indexmap::IndexMap;
 use once_cell::sync::OnceCell;
@@ -14,12 +14,14 @@ pub enum Expr {
     Yaml(Box<Expr>),
     Json(Box<Expr>),
     TmpFile(String, Box<Expr>),
+    TmpPort,
     Var(String),
 }
 
-pub struct Context<'a, T: TmpDirSupplier> {
+pub struct Context<'a, 'b, T: TmpDirSupplier> {
     tmp_dir_cell: OnceCell<PathBuf>,
     tmp_dir_supplier: &'a mut T,
+    tmp_port_reservers: &'b mut IndexMap<u16, TcpListener>,
     variables: IndexMap<String, Yaml>,
 }
 
@@ -29,11 +31,15 @@ pub struct EvalOutput {
     pub setup_hooks: Vec<SetupHook>,
 }
 
-impl<'a, T: TmpDirSupplier> Context<'a, T> {
-    pub fn new(tmp_dir_supplier: &'a mut T) -> Self {
+impl<'a, 'b, T: TmpDirSupplier> Context<'a, 'b, T> {
+    pub fn new(
+        tmp_dir_supplier: &'a mut T,
+        tmp_port_reservers: &'b mut IndexMap<u16, TcpListener>,
+    ) -> Self {
         Context {
             tmp_dir_cell: OnceCell::new(),
             tmp_dir_supplier,
+            tmp_port_reservers,
             variables: IndexMap::new(),
         }
     }
@@ -90,6 +96,16 @@ impl<'a, T: TmpDirSupplier> Context<'a, T> {
                         })
                     })
             }),
+            Expr::TmpPort => {
+                let listener = TcpListener::bind("127.0.0.1:0").map_err(|err| err.to_string())?;
+                let port = listener.local_addr().map_err(|err| err.to_string())?.port();
+                self.tmp_port_reservers.insert(port, listener);
+
+                Ok(EvalOutput {
+                    value: Yaml::Integer(port as i64),
+                    setup_hooks: vec![],
+                })
+            }
             Expr::Var(name) => self.lookup_var(name).map(|value| EvalOutput {
                 value,
                 setup_hooks: vec![],
@@ -187,6 +203,7 @@ mod tests {
         use crate::{ast::testuitl::mapping, tmp_dir::testutil::StubTmpDirFactory};
 
         use super::*;
+        use indexmap::indexmap;
         use pretty_assertions::assert_eq;
         use rstest::*;
         use testutil::literal_expr;
@@ -241,7 +258,8 @@ x:
 
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let mut ctx = Context::new(&mut tmp_dir_supplier);
+            let mut tmp_port_reservers = indexmap! {};
+            let mut ctx = Context::new(&mut tmp_dir_supplier, &mut tmp_port_reservers);
             ctx.define_var("answer".to_string(), Yaml::Integer(42))
                 .unwrap();
 
@@ -256,8 +274,8 @@ x:
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_path = tmp_dir.path().to_path_buf();
             let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-
-            let mut ctx = Context::new(&mut tmp_dir_suppilier);
+            let mut tmp_port_reservers = indexmap! {};
+            let mut ctx = Context::new(&mut tmp_dir_suppilier, &mut tmp_port_reservers);
 
             let expr = Expr::TmpFile(
                 filename.to_string(),
@@ -287,7 +305,8 @@ x:
                 .unwrap();
 
             let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let mut ctx = Context::new(&mut tmp_dir_suppilier);
+            let mut tmp_port_reservers = indexmap! {};
+            let mut ctx = Context::new(&mut tmp_dir_suppilier, &mut tmp_port_reservers);
 
             let expr = Expr::TmpFile(
                 filename.to_string(),
@@ -303,10 +322,34 @@ x:
         }
 
         #[rstest]
+        fn eval_expr_tmp_port() {
+            let tmp_dir = tempfile::tempdir().unwrap();
+            let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut tmp_port_reservers = indexmap! {};
+            let mut ctx = Context::new(&mut tmp_dir_suppilier, &mut tmp_port_reservers);
+
+            let expr = Expr::TmpPort;
+            let actual = ctx.eval_expr(&expr);
+
+            let (port, reserver) = tmp_port_reservers.iter().next().unwrap();
+            let listener_port = reserver.local_addr().unwrap().port();
+
+            assert_eq!(
+                Ok(EvalOutput {
+                    value: Yaml::Integer(*port as i64),
+                    setup_hooks: vec![]
+                }),
+                actual
+            );
+            assert_eq!(*port, listener_port);
+        }
+
+        #[rstest]
         fn lookup_var_when_not_defined() {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let ctx = Context::new(&mut tmp_dir_suppilier);
+            let mut tmp_port_reservers = indexmap! {};
+            let ctx = Context::new(&mut tmp_dir_suppilier, &mut tmp_port_reservers);
 
             assert_eq!(
                 Err("variable not_defined is not defined".to_string()),
@@ -318,7 +361,8 @@ x:
         fn lookup_var_when_defined() {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let mut ctx = Context::new(&mut tmp_dir_suppilier);
+            let mut tmp_port_reservers = indexmap! {};
+            let mut ctx = Context::new(&mut tmp_dir_suppilier, &mut tmp_port_reservers);
 
             assert_eq!(
                 Ok(()),
@@ -331,7 +375,8 @@ x:
         fn define_var_when_already_defined() {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_suppilier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let mut ctx = Context::new(&mut tmp_dir_suppilier);
+            let mut tmp_port_reservers = indexmap! {};
+            let mut ctx = Context::new(&mut tmp_dir_suppilier, &mut tmp_port_reservers);
 
             assert_eq!(
                 Ok(()),

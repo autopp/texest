@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{net::TcpListener, time::Duration};
 
 use indexmap::{indexmap, IndexMap};
 use saphyr::Yaml;
@@ -96,11 +96,12 @@ const DEFAULT_PROCESS_NAME: &str = "main";
 
 pub fn eval_test_expr<T: TmpDirSupplier>(
     tmp_dir_supplier: &mut T,
+    tmp_port_reservers: &mut IndexMap<u16, TcpListener>,
     test_case_expr: &TestCaseExpr,
 ) -> Result<Vec<TestCase>, TestExprError> {
     let mut v =
         Validator::new_with_paths(&test_case_expr.filename, vec![test_case_expr.path.clone()]);
-    let mut ctx = Context::new(tmp_dir_supplier);
+    let mut ctx = Context::new(tmp_dir_supplier, tmp_port_reservers);
     let mut setup_hooks: Vec<SetupHook> = vec![];
 
     test_case_expr.let_decls.iter().for_each(|(name, expr)| {
@@ -263,7 +264,7 @@ fn eval_matcher_exprs<
     F: Fn(&mut Validator, &str, &Yaml) -> Option<(T, bool)>,
 >(
     v: &mut Validator,
-    ctx: &mut Context<'_, TS>,
+    ctx: &mut Context<'_, '_, TS>,
     subject: &str,
     parse: F,
     matcher_exprs: &IndexMap<String, Expr>,
@@ -286,7 +287,7 @@ fn eval_matcher_exprs<
 
 fn eval_process_expr<T: TmpDirSupplier>(
     v: &mut Validator,
-    ctx: &mut Context<'_, T>,
+    ctx: &mut Context<'_, '_, T>,
     setup_hooks: &mut Vec<SetupHook>,
     status_matchers: Vec<(StatusMatcher, bool)>,
     stdout_matchers: Vec<(StreamMatcher, bool)>,
@@ -1059,8 +1060,13 @@ mod tests {
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut tmp_port_reserver = indexmap! {};
 
-            let actual = eval_test_expr(&mut tmp_dir_supplier, &given.build());
+            let actual = eval_test_expr(
+                &mut tmp_dir_supplier,
+                &mut tmp_port_reserver,
+                &given.build(),
+            );
 
             assert_eq!(Ok(expected), actual, "{}", title);
         }
@@ -1070,6 +1076,7 @@ mod tests {
             let tmp_dir = tempfile::tempdir().unwrap();
             let tmp_dir_path_buf = tmp_dir.path().to_path_buf();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
+            let mut tmp_port_reserver = indexmap! {};
 
             let given = TestCaseExprTemplate {
                 name: Some(literal_expr(Yaml::String("test".to_string()))),
@@ -1084,7 +1091,11 @@ mod tests {
                 ..Default::default()
             };
 
-            let actual = eval_test_expr(&mut tmp_dir_supplier, &given.build());
+            let actual = eval_test_expr(
+                &mut tmp_dir_supplier,
+                &mut tmp_port_reserver,
+                &given.build(),
+            );
 
             let tmp_file_path_buf = tmp_dir_path_buf.join("input.txt");
 
@@ -1415,7 +1426,12 @@ mod tests {
         ) {
             let tmp_dir = tempfile::tempdir().unwrap();
             let mut tmp_dir_supplier = StubTmpDirFactory { tmp_dir: &tmp_dir };
-            let actual = eval_test_expr(&mut tmp_dir_supplier, &given.build());
+            let mut tmp_port_reserver = indexmap! {};
+            let actual = eval_test_expr(
+                &mut tmp_dir_supplier,
+                &mut tmp_port_reserver,
+                &given.build(),
+            );
 
             assert_eq!(
                 Err(TestExprError {
