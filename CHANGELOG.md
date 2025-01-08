@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.9.0
+
+- Add `$tmp_port` expr notation for reserve random port
+- Make body of `$json` and `$yaml` to be expression
+- Add `let` block for define variables and add `$var` expr notation
+- Support negative matching by `not.*` notation
+- Fix tee mode to print output of background process
+
 ## v0.8.0
 
 - Add `--tee-stdout` and `--tee-stderr` options to enable tee mode from command line
