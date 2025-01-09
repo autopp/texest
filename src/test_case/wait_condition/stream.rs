@@ -11,19 +11,19 @@ use crate::{ast::Map, validator::Validator};
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
-pub struct StreamCondition {
+pub struct StdoutCondition {
     pub pattern: Regex,
     pub timeout: Duration,
 }
 
 #[cfg(test)]
-impl PartialEq for StreamCondition {
+impl PartialEq for StdoutCondition {
     fn eq(&self, other: &Self) -> bool {
         self.timeout == other.timeout && self.pattern.as_str() == other.pattern.as_str()
     }
 }
 
-impl StreamCondition {
+impl StdoutCondition {
     pub async fn wait(&self, cmd: &mut Child) -> Result<(), String> {
         let stdout = cmd.stdout.as_mut().unwrap();
         let reader = BufReader::new(stdout);
@@ -84,7 +84,7 @@ impl StreamCondition {
 mod tests {
     use super::*;
 
-    mod stream_condition {
+    mod stdout_condition {
         use indexmap::indexmap;
         use once_cell::sync::Lazy;
         use pretty_assertions::assert_eq;
@@ -106,7 +106,7 @@ mod tests {
             #[case] command: &'static str,
             #[case] expected: Result<(), String>,
         ) {
-            let given = StreamCondition {
+            let given = StdoutCondition {
                 pattern: Regex::new("wo.ld").unwrap(),
                 timeout,
             };
@@ -130,20 +130,20 @@ mod tests {
         static INVALID_DURATION: Lazy<Yaml> = Lazy::new(|| Yaml::Boolean(true));
 
         #[rstest]
-        #[case("with valid params", indexmap! { "pattern" => &*VALID_PATTERN }, Some(StreamCondition { pattern: Regex::new("wo.ld").unwrap(), timeout: Duration::from_secs(3) }), vec![])]
-        #[case("with valid full params", indexmap! { "pattern" => &*VALID_PATTERN, "timeout" => &*VALID_DURATION }, Some(StreamCondition { pattern: Regex::new("wo.ld").unwrap(), timeout: Duration::from_secs(10) }), vec![])]
+        #[case("with valid params", indexmap! { "pattern" => &*VALID_PATTERN }, Some(StdoutCondition { pattern: Regex::new("wo.ld").unwrap(), timeout: Duration::from_secs(3) }), vec![])]
+        #[case("with valid full params", indexmap! { "pattern" => &*VALID_PATTERN, "timeout" => &*VALID_DURATION }, Some(StdoutCondition { pattern: Regex::new("wo.ld").unwrap(), timeout: Duration::from_secs(10) }), vec![])]
         #[case("without pattern", indexmap! {}, None, vec![("", "should have .pattern as string")])]
         #[case("with invalid pattern", indexmap! { "pattern" => &*INVALID_PATTERN }, None, vec![(".pattern", "should be valid regular expression pattern")])]
         #[case("with invalid timeout", indexmap! { "pattern" => &*VALID_PATTERN, "timeout" => &*INVALID_DURATION }, None, vec![(".timeout", "should be duration, but is bool")])]
         fn parse(
             #[case] title: &'static str,
             #[case] params: Map,
-            #[case] expected_value: Option<StreamCondition>,
+            #[case] expected_value: Option<StdoutCondition>,
             #[case] expected_violation: Vec<(&str, &str)>,
         ) {
             let (mut v, violation) = crate::validator::testutil::new_validator();
 
-            let actual = StreamCondition::parse(&mut v, &params);
+            let actual = StdoutCondition::parse(&mut v, &params);
 
             assert_eq!(expected_value, actual, "{}", title);
             assert_eq!(

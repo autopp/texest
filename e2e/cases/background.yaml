@@ -17,7 +17,7 @@ tests:
                     while true; do true; done
                 background:
                   wait_for:
-                    type: stream
+                    type: stdout
                     pattern: hello
                     timeout: 1s
               proc2:
