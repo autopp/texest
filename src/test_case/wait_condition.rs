@@ -4,7 +4,7 @@ mod stream;
 
 use std::time::Duration;
 
-use stream::StreamCondition;
+use stream::StdoutCondition;
 use tokio::process::Child;
 
 use crate::ast::Map;
@@ -18,7 +18,7 @@ pub use self::sleep::SleepCondition;
 pub enum WaitCondition {
     Sleep(SleepCondition),
     Http(HttpCondition),
-    Stream(StreamCondition),
+    Stdout(StdoutCondition),
     #[cfg(test)]
     SuccessStub(indexmap::IndexMap<String, saphyr::Yaml>),
 }
@@ -28,7 +28,7 @@ impl WaitCondition {
         match self {
             WaitCondition::Sleep(sleep_condition) => sleep_condition.wait().await,
             WaitCondition::Http(http_condition) => http_condition.wait().await,
-            WaitCondition::Stream(stream_condition) => stream_condition.wait(cmd).await,
+            WaitCondition::Stdout(stdout_condition) => stdout_condition.wait(cmd).await,
             #[cfg(test)]
             WaitCondition::SuccessStub(_) => Ok(()),
         }
@@ -38,7 +38,7 @@ impl WaitCondition {
         match name {
             "sleep" => SleepCondition::parse(v, params).map(WaitCondition::Sleep),
             "http" => HttpCondition::parse(v, params).map(WaitCondition::Http),
-            "stream" => StreamCondition::parse(v, params).map(WaitCondition::Stream),
+            "stdout" => StdoutCondition::parse(v, params).map(WaitCondition::Stdout),
             #[cfg(test)]
             "success_stub" => Some(WaitCondition::SuccessStub(
                 params
@@ -87,10 +87,10 @@ mod tests {
             max_retry: 3,
             timeout: Duration::from_secs(1),
         })), vec![])]
-    #[case("with stream", "stream", indexmap! {
+    #[case("with stdout", "stdout", indexmap! {
             "pattern" => Yaml::String("hello".to_string()),
             "timeout" => Yaml::String("1s".to_string()),
-        }, Some(WaitCondition::Stream(StreamCondition {
+        }, Some(WaitCondition::Stdout(StdoutCondition {
             pattern: regex::Regex::new("hello").unwrap(),
             timeout: Duration::from_secs(1),
         })), vec![])]
