@@ -1,13 +1,13 @@
 mod http;
 mod sleep;
-mod stream;
+mod stdout;
 
 use std::time::Duration;
 
-use stream::StdoutCondition;
-use tokio::process::Child;
+use stdout::StdoutCondition;
 
 use crate::ast::Map;
+use crate::exec::BackgroundExec;
 use crate::validator::Validator;
 
 pub use self::http::HttpCondition;
@@ -24,11 +24,15 @@ pub enum WaitCondition {
 }
 
 impl WaitCondition {
-    pub async fn wait(&self, cmd: &mut Child) -> Result<(), String> {
+    pub async fn wait(&self, exec: &mut BackgroundExec) -> Result<(), String> {
         match self {
             WaitCondition::Sleep(sleep_condition) => sleep_condition.wait().await,
             WaitCondition::Http(http_condition) => http_condition.wait().await,
-            WaitCondition::Stdout(stdout_condition) => stdout_condition.wait(cmd).await,
+            WaitCondition::Stdout(stdout_condition) => {
+                let output = stdout_condition.wait(exec).await?;
+                exec.append_buffered_stdout(&output);
+                Ok(())
+            }
             #[cfg(test)]
             WaitCondition::SuccessStub(_) => Ok(()),
         }
