@@ -28,13 +28,22 @@ pub struct Output {
 
 #[derive(Debug)]
 pub struct BackgroundExec {
-    child: tokio::process::Child,
+    pub child: Child,
     timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
 }
 
 impl BackgroundExec {
+    pub fn new(child: Child, timeout: Duration, tee_stdout: bool, tee_stderr: bool) -> Self {
+        Self {
+            child,
+            timeout,
+            tee_stdout,
+            tee_stderr,
+        }
+    }
+
     pub async fn terminate(self) -> Result<Output, String> {
         let BackgroundExec { child, timeout, .. } = self;
         let pid = child
@@ -82,7 +91,7 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
     wait_condition: &WaitCondition,
     tee: (bool, bool),
 ) -> Result<BackgroundExec, String> {
-    let mut cmd = Command::new(&command)
+    let mut child = Command::new(&command)
         .args(&args)
         .stdin(std::process::Stdio::piped())
         .envs(env)
@@ -91,21 +100,17 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
         .spawn()
         .map_err(|err| error_message_of_execution(command, args, err))?;
 
-    let mut cmd_stdin = cmd.stdin.take().ok_or("cannot get stdin".to_string())?;
+    let mut cmd_stdin = child.stdin.take().ok_or("cannot get stdin".to_string())?;
     let _ = tokio::task::spawn(async move { cmd_stdin.write_all(stdin.as_bytes()).await })
         .await
         .map_err(|err| err.to_string())?;
 
-    wait_condition.wait(&mut cmd).await?;
-
     let (tee_stdout, tee_stderr) = tee;
+    let mut exec = BackgroundExec::new(child, timeout, tee_stdout, tee_stderr);
 
-    Ok(BackgroundExec {
-        child: cmd,
-        timeout,
-        tee_stdout,
-        tee_stderr,
-    })
+    wait_condition.wait(&mut exec).await?;
+
+    Ok(exec)
 }
 
 fn error_message_of_execution(command: String, args: Vec<String>, err: std::io::Error) -> String {

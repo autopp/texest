@@ -2,12 +2,9 @@ use duration_str::HumanFormat;
 use std::time::Duration;
 
 use regex::Regex;
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Child,
-};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::{ast::Map, validator::Validator};
+use crate::{ast::Map, exec::BackgroundExec, validator::Validator};
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
@@ -24,8 +21,9 @@ impl PartialEq for StdoutCondition {
 }
 
 impl StdoutCondition {
-    pub async fn wait(&self, cmd: &mut Child) -> Result<(), String> {
-        let stdout = cmd.stdout.as_mut().unwrap();
+    // FIXME: dependency cycle (exec -> test_case -> exec)
+    pub async fn wait(&self, exec: &mut BackgroundExec) -> Result<(), String> {
+        let stdout = exec.child.stdout.as_mut().unwrap();
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
 
@@ -111,7 +109,7 @@ mod tests {
                 timeout,
             };
 
-            let mut cmd = tokio::process::Command::new("bash")
+            let child = tokio::process::Command::new("bash")
                 .arg("-c")
                 .arg(command)
                 .stdout(std::process::Stdio::piped())
@@ -119,7 +117,9 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let actual = given.wait(&mut cmd).await;
+            let mut exec = BackgroundExec::new(child, Duration::from_secs(10), false, false);
+
+            let actual = given.wait(&mut exec).await;
 
             assert_eq!(actual, expected, "{}", title);
         }

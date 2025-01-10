@@ -29,6 +29,8 @@ tests:
                 proc1:
                   status:
                     eq: 1
+                  stdout:
+                    eq: "hello\n"
                   stderr:
                     eq: "goodbye\n"
                 proc2:
