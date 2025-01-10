@@ -22,31 +22,38 @@ impl PartialEq for StdoutCondition {
 
 impl StdoutCondition {
     // FIXME: dependency cycle (exec -> test_case -> exec)
-    pub async fn wait(&self, exec: &mut BackgroundExec) -> Result<(), String> {
+    pub async fn wait(&self, exec: &mut BackgroundExec) -> Result<String, String> {
         let stdout = exec.child.stdout.as_mut().unwrap();
-        let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
+        let mut reader = BufReader::new(stdout);
 
         let result = tokio::time::timeout(self.timeout, async {
-            while let Some(line) = lines.next_line().await.map_err(|err| err.to_string())? {
+            let mut buf = String::new();
+            let mut line = String::new();
+
+            while reader
+                .read_line(&mut line)
+                .await
+                .map_err(|err| err.to_string())?
+                > 0
+            {
+                buf.push_str(&line);
                 if self.pattern.is_match(&line) {
-                    return Ok(());
+                    return Ok(buf);
                 }
+                line.clear();
             }
 
             Err(format!("stdout never output \"{}\"", self.pattern.as_str()))
         })
         .await;
 
-        match result {
-            Ok(Ok(())) => Ok(()),
-            Ok(err) => err,
-            Err(_) => Err(format!(
+        result.unwrap_or_else(|_| {
+            Err(format!(
                 "stdout did not output \"{}\" in {}",
                 self.pattern.as_str(),
                 self.timeout.human_format()
-            )),
-        }
+            ))
+        })
     }
 
     pub fn parse(v: &mut Validator, params: &Map) -> Option<Self> {
@@ -93,7 +100,12 @@ mod tests {
 
         #[rstest]
         #[tokio::test]
-        #[case("when matched, returns Ok", Duration::from_secs(3), "echo hello; echo world; echo goodbye", Ok(()))]
+        #[case(
+            "when matched, returns Ok",
+            Duration::from_secs(3),
+            "echo hello; echo world; echo goodbye",
+            Ok("hello\nworld\n".to_string())
+        )]
         #[tokio::test]
         #[case("when timeout, returns Err", Duration::from_millis(10), "yes", Err("stdout did not output \"wo.ld\" in 10ms".to_string()))]
         #[tokio::test]
@@ -102,7 +114,7 @@ mod tests {
             #[case] title: &'static str,
             #[case] timeout: Duration,
             #[case] command: &'static str,
-            #[case] expected: Result<(), String>,
+            #[case] expected: Result<String, String>,
         ) {
             let given = StdoutCondition {
                 pattern: Regex::new("wo.ld").unwrap(),

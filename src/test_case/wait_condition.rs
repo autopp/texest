@@ -28,7 +28,11 @@ impl WaitCondition {
         match self {
             WaitCondition::Sleep(sleep_condition) => sleep_condition.wait().await,
             WaitCondition::Http(http_condition) => http_condition.wait().await,
-            WaitCondition::Stdout(stdout_condition) => stdout_condition.wait(exec).await,
+            WaitCondition::Stdout(stdout_condition) => {
+                let output = stdout_condition.wait(exec).await?;
+                exec.append_buffered_stdout(&output);
+                Ok(())
+            }
             #[cfg(test)]
             WaitCondition::SuccessStub(_) => Ok(()),
         }

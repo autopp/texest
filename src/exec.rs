@@ -32,6 +32,7 @@ pub struct BackgroundExec {
     timeout: Duration,
     pub tee_stdout: bool,
     pub tee_stderr: bool,
+    buffered_stdout: String,
 }
 
 impl BackgroundExec {
@@ -41,7 +42,12 @@ impl BackgroundExec {
             timeout,
             tee_stdout,
             tee_stderr,
+            buffered_stdout: String::new(),
         }
+    }
+
+    pub fn append_buffered_stdout(&mut self, stdout: &str) {
+        self.buffered_stdout.push_str(stdout);
     }
 
     pub async fn terminate(self) -> Result<Output, String> {
@@ -54,7 +60,7 @@ impl BackgroundExec {
         kill(pid, nix::sys::signal::Signal::SIGTERM)
             .map_err(|err| format!("cound not send signal to {}: {}", pid, err))?;
 
-        wait_with_timeout(child, timeout).await
+        wait_with_timeout(child, timeout, &self.buffered_stdout).await
     }
 }
 
@@ -79,7 +85,7 @@ pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
         .await
         .map_err(|err| err.to_string())?;
 
-    wait_with_timeout(cmd, timeout).await
+    wait_with_timeout(cmd, timeout, "").await
 }
 
 pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
@@ -119,7 +125,11 @@ fn error_message_of_execution(command: String, args: Vec<String>, err: std::io::
     format!("cannot execute {:?}: {}", command_and_args, err)
 }
 
-async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output, String> {
+async fn wait_with_timeout(
+    mut child: Child,
+    timeout: Duration,
+    buffered_stdout: &str,
+) -> Result<Output, String> {
     match tokio::time::timeout(timeout, child.wait()).await {
         Ok(Ok(status)) => {
             let status = if let Some(code) = status.code() {
@@ -130,7 +140,7 @@ async fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output
                 Err(format!("unknown process status: {}", status))
             }?;
 
-            let mut stdout: Vec<u8> = vec![];
+            let mut stdout: Vec<u8> = buffered_stdout.as_bytes().to_vec();
             child
                 .stdout
                 .ok_or_else(|| "cannot get stdout".to_string())?
