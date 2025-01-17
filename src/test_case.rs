@@ -156,8 +156,8 @@ impl TestCase {
                 let execution = match &process.mode {
                     ProcessMode::Foreground => {
                         let exec_result = execute_command(
-                            process.command.clone(),
-                            process.args.clone(),
+                            &process.command,
+                            &process.args,
                             process.stdin.clone(),
                             process.env.clone(),
                             process.timeout,
@@ -177,8 +177,8 @@ impl TestCase {
                     }
                     ProcessMode::Background(cfg) => {
                         let background_exec = execute_background_command(
-                            process.command.clone(),
-                            process.args.clone(),
+                            &process.command,
+                            &process.args,
                             process.stdin.clone(),
                             process.env.clone(),
                             process.timeout,

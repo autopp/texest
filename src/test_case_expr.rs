@@ -116,12 +116,12 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
     });
 
     let mut processes_matchers: IndexMap<
-        String,
+        &str,
         ProcessMatchersTuple,
     > = v.in_field("expect", |v| match &test_case_expr.processes_matchers {
         ProcessesMatchersExpr::Single(pm) => {
             indexmap! {
-                DEFAULT_PROCESS_NAME.to_string() => (
+                DEFAULT_PROCESS_NAME => (
                     eval_matcher_exprs(v, &mut ctx, "status", StatusMatcher::parse, &pm.status_matcher_exprs),
                     eval_matcher_exprs(v, &mut ctx, "stdout", StreamMatcher::parse, &pm.stdout_matcher_exprs),
                     eval_matcher_exprs(v, &mut ctx, "stderr", StreamMatcher::parse, &pm.stderr_matcher_exprs),
@@ -133,7 +133,7 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
             .map(|(process_name, pm)| {
                 v.in_field(process_name, |v| {
                     (
-                        process_name.clone(),
+                        process_name.as_str(),
                         (
                             eval_matcher_exprs(
                                 v,
@@ -177,7 +177,9 @@ pub fn eval_test_expr<T: TmpDirSupplier>(
                     name.clone(),
                     v.in_field(name, |v| {
                         let (status_matchers, stdout_matchers, stderr_matchers) =
-                            processes_matchers.shift_remove(name).unwrap_or_default();
+                            processes_matchers
+                                .shift_remove(name.as_str())
+                                .unwrap_or_default();
                         eval_process_expr(
                             v,
                             &mut ctx,

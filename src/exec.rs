@@ -65,14 +65,14 @@ impl BackgroundExec {
 }
 
 pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
-    command: String,
-    args: Vec<String>,
+    command: &str,
+    args: &[String],
     stdin: String,
     env: E,
     timeout: Duration,
 ) -> Result<Output, String> {
-    let mut cmd = Command::new(&command)
-        .args(&args)
+    let mut cmd = Command::new(command)
+        .args(args)
         .stdin(std::process::Stdio::piped())
         .envs(env)
         .stdout(std::process::Stdio::piped())
@@ -89,16 +89,16 @@ pub async fn execute_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
 }
 
 pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = (S, S)>>(
-    command: String,
-    args: Vec<String>,
+    command: &str,
+    args: &[String],
     stdin: String,
     env: E,
     timeout: Duration,
     wait_condition: &WaitCondition,
     tee: (bool, bool),
 ) -> Result<BackgroundExec, String> {
-    let mut child = Command::new(&command)
-        .args(&args)
+    let mut child = Command::new(command)
+        .args(args)
         .stdin(std::process::Stdio::piped())
         .envs(env)
         .stdout(std::process::Stdio::piped())
@@ -119,9 +119,9 @@ pub async fn execute_background_command<S: AsRef<OsStr>, E: IntoIterator<Item = 
     Ok(exec)
 }
 
-fn error_message_of_execution(command: String, args: Vec<String>, err: std::io::Error) -> String {
-    let mut command_and_args = vec![command];
-    command_and_args.extend(args);
+fn error_message_of_execution(command: &str, args: &[String], err: std::io::Error) -> String {
+    let mut command_and_args = vec![command.to_string()];
+    command_and_args.extend(args.to_vec());
     format!("cannot execute {:?}: {}", command_and_args, err)
 }
 
@@ -211,8 +211,8 @@ mod tests {
             #[case] stderr: &str,
         ) {
             let actual = execute_command(
-                "bash".to_string(),
-                vec!["-c".to_string(), command.to_string()],
+                "bash",
+                &["-c".to_string(), command.to_string()],
                 stdin.to_string(),
                 env,
                 Duration::from_secs(timeout),
@@ -263,8 +263,8 @@ mod tests {
             #[case] stderr: &str,
         ) {
             let bg = execute_background_command(
-                "bash".to_string(),
-                vec!["-c".to_string(), command.to_string()],
+                "bash",
+                &["-c".to_string(), command.to_string()],
                 stdin.to_string(),
                 env,
                 Duration::from_secs(timeout),
