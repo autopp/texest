@@ -416,7 +416,7 @@ tests:
         - $env: SUFFIX-", vec![TestCaseExprTemplate {
             processes: ProcessesExprTemplate::Single(
                 ProcessExprTemplate {
-                    command: Expr::Literal(Yaml::String("echo".to_string().to_string())),
+                    command: Expr::Literal(Yaml::String("echo".to_string())),
                     args: vec![
                         Expr::EnvVar("MESSAGE".to_string(), None),
                         Expr::EnvVar("NAME".to_string(), Some("John\nDoe".to_string())),
