@@ -7,7 +7,7 @@ target_cmd=${E2E_TARGET:-${my_dir}/../target/debug/texest}
 tester_cmd="${E2E_TESTER:-texest}"
 
 options=${OPTIONS:-}
-files=${FILES:-*.yaml}
+files=${FILES:-*.texest.yaml}
 
 have_error=no
 for file in $my_dir/cases/${files}; do
