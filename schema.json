@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/autopp/texest/main/schema.json",
+  "title": "texest test specification",
+  "description": "Test specification file for texest, a testing framework for shell scripts and CLI tools",
+  "type": "object",
+  "required": ["tests"],
+  "additionalProperties": false,
+  "properties": {
+    "tests": {
+      "description": "Array of test cases",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/TestCase"
+      }
+    }
+  },
+  "$defs": {
+    "Duration": {
+      "description": "Duration value. Either an integer (seconds) or a string with unit (e.g. \"5s\", \"100ms\", \"1m\", \"2h\")",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "Expr": {
+      "description": "Expression for dynamic values",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "description": "Environment variable reference",
+          "required": ["$env"],
+          "additionalProperties": false,
+          "properties": {
+            "$env": {
+              "type": "string",
+              "description": "Environment variable name, optionally followed by '-' and a default value",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*(-[\\s\\S]*)?$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Variable reference (defined in let)",
+          "required": ["$var"],
+          "additionalProperties": false,
+          "properties": {
+            "$var": {
+              "type": "string",
+              "description": "Variable name defined in the let section"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Convert value to compact JSON string",
+          "required": ["$json"],
+          "additionalProperties": false,
+          "properties": {
+            "$json": {
+              "description": "Value to convert to JSON string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Convert value to YAML string",
+          "required": ["$yaml"],
+          "additionalProperties": false,
+          "properties": {
+            "$yaml": {
+              "description": "Value to convert to YAML string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Create a temporary file and return its path",
+          "required": ["$tmp_file"],
+          "additionalProperties": false,
+          "properties": {
+            "$tmp_file": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["filename", "contents"],
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "description": "Filename in the temporary directory"
+                },
+                "contents": {
+                  "$ref": "#/$defs/Expr"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Reserve an unused port and return the port number",
+          "required": ["$tmp_port"],
+          "additionalProperties": false,
+          "properties": {
+            "$tmp_port": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {}
+            }
+          }
+        }
+      ]
+    },
+    "StatusMatcherValue": {
+      "description": "Value for a status matcher (integer or expression)",
+      "oneOf": [
+        { "type": "integer" },
+        {
+          "type": "object",
+          "required": ["$var"],
+          "additionalProperties": false,
+          "properties": {
+            "$var": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["$env"],
+          "additionalProperties": false,
+          "properties": {
+            "$env": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "StreamMatcherValue": {
+      "description": "Value for a stream matcher (string or expression)",
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["$var"],
+          "additionalProperties": false,
+          "properties": {
+            "$var": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["$env"],
+          "additionalProperties": false,
+          "properties": {
+            "$env": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "StatusMatcher": {
+      "description": "Assertion on exit status code",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eq": {
+          "$ref": "#/$defs/StatusMatcherValue",
+          "description": "Exact status code match"
+        },
+        "not.eq": {
+          "$ref": "#/$defs/StatusMatcherValue",
+          "description": "Status code must not equal this value"
+        }
+      }
+    },
+    "StreamMatcher": {
+      "description": "Assertion on output stream (stdout/stderr) or file contents",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eq": {
+          "$ref": "#/$defs/StreamMatcherValue",
+          "description": "Exact string match"
+        },
+        "not.eq": {
+          "$ref": "#/$defs/StreamMatcherValue",
+          "description": "String must not equal this value"
+        },
+        "contain": {
+          "$ref": "#/$defs/StreamMatcherValue",
+          "description": "Must contain this substring"
+        },
+        "not.contain": {
+          "$ref": "#/$defs/StreamMatcherValue",
+          "description": "Must not contain this substring"
+        },
+        "match_regex": {
+          "$ref": "#/$defs/StreamMatcherValue",
+          "description": "Must match this regular expression"
+        },
+        "not.match_regex": {
+          "$ref": "#/$defs/StreamMatcherValue",
+          "description": "Must not match this regular expression"
+        },
+        "eq_json": {
+          "description": "Exact JSON match (ignores formatting)"
+        },
+        "not.eq_json": {
+          "description": "JSON must not equal this value"
+        },
+        "include_json": {
+          "description": "Must include this JSON as a subset"
+        },
+        "not.include_json": {
+          "description": "Must not include this JSON as a subset"
+        }
+      }
+    },
+    "WaitCondition": {
+      "description": "Condition to wait for before proceeding after starting a background process",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Wait for a fixed duration",
+          "required": ["type", "duration"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "sleep"
+            },
+            "duration": {
+              "$ref": "#/$defs/Duration"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Wait for an HTTP endpoint to respond successfully",
+          "required": ["type", "port", "path"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "port": {
+              "$ref": "#/$defs/Expr",
+              "description": "Server port number (integer or expression)"
+            },
+            "path": {
+              "type": "string",
+              "description": "URL path to check"
+            },
+            "initial_delay": {
+              "$ref": "#/$defs/Duration",
+              "description": "Delay before first check"
+            },
+            "interval": {
+              "$ref": "#/$defs/Duration",
+              "description": "Interval between retry attempts"
+            },
+            "max_retry": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Maximum number of retry attempts"
+            },
+            "timeout": {
+              "$ref": "#/$defs/Duration",
+              "description": "Timeout for each HTTP request"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Wait for a pattern to appear in stdout",
+          "required": ["type", "pattern"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "stdout"
+            },
+            "pattern": {
+              "type": "string",
+              "description": "Regular expression pattern to match in stdout"
+            },
+            "timeout": {
+              "$ref": "#/$defs/Duration",
+              "description": "Maximum time to wait for the pattern"
+            }
+          }
+        }
+      ]
+    },
+    "BackgroundConfig": {
+      "description": "Configuration for running a process in the background",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wait_for": {
+          "$ref": "#/$defs/WaitCondition"
+        }
+      }
+    },
+    "EnvMap": {
+      "description": "Environment variables map",
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LetMap": {
+      "description": "Variable declarations",
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Command": {
+      "description": "Command and its arguments",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/Expr"
+      }
+    },
+    "Process": {
+      "description": "Process configuration",
+      "type": "object",
+      "required": ["command"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/Command"
+        },
+        "stdin": {
+          "$ref": "#/$defs/Expr",
+          "description": "Input to the command"
+        },
+        "env": {
+          "$ref": "#/$defs/EnvMap"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration",
+          "description": "Command timeout"
+        },
+        "tee_stdout": {
+          "type": "boolean",
+          "description": "Print stdout during execution"
+        },
+        "tee_stderr": {
+          "type": "boolean",
+          "description": "Print stderr during execution"
+        },
+        "background": {
+          "$ref": "#/$defs/BackgroundConfig"
+        }
+      }
+    },
+    "ProcessExpect": {
+      "description": "Assertions for a single process in multi-process mode",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/StatusMatcher"
+        },
+        "stdout": {
+          "$ref": "#/$defs/StreamMatcher"
+        },
+        "stderr": {
+          "$ref": "#/$defs/StreamMatcher"
+        }
+      }
+    },
+    "Expect": {
+      "description": "Test assertions",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/StatusMatcher"
+        },
+        "stdout": {
+          "$ref": "#/$defs/StreamMatcher"
+        },
+        "stderr": {
+          "$ref": "#/$defs/StreamMatcher"
+        },
+        "files": {
+          "type": "object",
+          "description": "Assertions on file contents",
+          "additionalProperties": {
+            "$ref": "#/$defs/StreamMatcher"
+          }
+        },
+        "processes": {
+          "type": "object",
+          "description": "Per-process assertions in multi-process mode",
+          "additionalProperties": {
+            "$ref": "#/$defs/ProcessExpect"
+          }
+        }
+      }
+    },
+    "TestCase": {
+      "description": "A single test case",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Single-process test case",
+          "required": ["command"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Test case name"
+            },
+            "command": {
+              "$ref": "#/$defs/Command"
+            },
+            "stdin": {
+              "$ref": "#/$defs/Expr",
+              "description": "Input to the command"
+            },
+            "env": {
+              "$ref": "#/$defs/EnvMap"
+            },
+            "let": {
+              "$ref": "#/$defs/LetMap"
+            },
+            "timeout": {
+              "$ref": "#/$defs/Duration",
+              "description": "Command timeout"
+            },
+            "tee_stdout": {
+              "type": "boolean",
+              "description": "Print stdout during execution"
+            },
+            "tee_stderr": {
+              "type": "boolean",
+              "description": "Print stderr during execution"
+            },
+            "background": {
+              "$ref": "#/$defs/BackgroundConfig"
+            },
+            "expect": {
+              "$ref": "#/$defs/Expect"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Multi-process test case",
+          "required": ["processes"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Test case name"
+            },
+            "processes": {
+              "type": "object",
+              "description": "Named processes to run",
+              "additionalProperties": {
+                "$ref": "#/$defs/Process"
+              }
+            },
+            "let": {
+              "$ref": "#/$defs/LetMap"
+            },
+            "expect": {
+              "$ref": "#/$defs/Expect"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -64,6 +64,38 @@ Options:
   -h, --help             Print help
 ```
 
+## Editor Support
+
+texest provides a [JSON Schema](schema.json) for YAML test specification files, enabling completion and validation in editors that support [yaml-language-server](https://github.com/redhat-developer/yaml-language-server).
+
+### Using a YAML comment (any editor)
+
+Add the following comment to the top of your YAML file:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/autopp/texest/main/schema.json
+tests:
+  - name: example
+    command: [echo, hello]
+```
+
+### Using VS Code settings
+
+If your test files use the `*.texest.yaml` or `*.texest.yml` extension, you can configure the schema automatically in `.vscode/settings.json`:
+
+```json
+{
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/autopp/texest/main/schema.json": [
+      "*.texest.yaml",
+      "*.texest.yml"
+    ]
+  }
+}
+```
+
+This requires the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml).
+
 ## Test Specification
 
 ### Basic Structure
