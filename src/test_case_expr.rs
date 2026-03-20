@@ -51,6 +51,7 @@ pub struct ProcessExpr {
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[allow(clippy::large_enum_variant)]
 pub enum ProcessesExpr {
     Single(ProcessExpr),
     Multi(IndexMap<String, ProcessExpr>),
