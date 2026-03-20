@@ -127,7 +127,7 @@ impl TestCase {
         };
 
         let mut setup_failures = vec![];
-        self.setup_hooks.iter().try_for_each(|hook| {
+        let _ = self.setup_hooks.iter().try_for_each(|hook| {
             let r = hook.setup();
             if let Err(err) = r {
                 setup_failures.push(err);
